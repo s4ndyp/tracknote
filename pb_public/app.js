@@ -25,11 +25,13 @@ function localISODate(date = new Date()) {
 const state = {
   view: "today",
   trackers: [],
+  categories: [],
   entries: [],
   calendarRange: "month",
   calendarFilterTrackerId: null,
   statsRange: "month",
   selectedDay: localISODate(new Date()),
+  selectedCategoryId: null,
   loading: false,
 };
 
@@ -112,6 +114,41 @@ function trackerById(id) {
   return state.trackers.find((t) => t.id === id);
 }
 
+function categoryById(id) {
+  return state.categories.find((c) => c.id === id);
+}
+
+function overigCategory() {
+  return state.categories.find((c) => c.name === "Overig") || null;
+}
+
+function trackersInCategory(categoryId) {
+  const active = state.trackers.filter((t) => !t.archived);
+  const overig = overigCategory();
+  return active
+    .filter((t) => {
+      if (!t.category) return overig && categoryId === overig.id;
+      return t.category === categoryId;
+    })
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || a.name.localeCompare(b.name));
+}
+
+function categoryGridLayout(count) {
+  if (count <= 0) return { cols: 1, rows: 1 };
+  if (count === 1) return { cols: 1, rows: 1 };
+  if (count === 2) return { cols: 1, rows: 2 };
+  if (count <= 4) return { cols: 2, rows: 2 };
+  if (count <= 6) return { cols: 2, rows: 3 };
+  if (count <= 9) return { cols: 3, rows: 3 };
+  const cols = Math.ceil(Math.sqrt(count));
+  return { cols, rows: Math.ceil(count / cols) };
+}
+
+function categoryDayLogCount(categoryId, day) {
+  const ids = new Set(trackersInCategory(categoryId).map((t) => t.id));
+  return entriesForDay(day).filter((e) => ids.has(e.tracker)).length;
+}
+
 function optionsOf(tracker) {
   const raw = tracker?.options;
   if (!raw) return {};
@@ -163,6 +200,10 @@ async function listAll(collection, params = {}) {
     page += 1;
   } while (page <= totalPages);
   return items;
+}
+
+async function loadCategories() {
+  state.categories = await listAll("categories", { sort: "sort_order,name" });
 }
 
 async function loadTrackers() {
@@ -217,6 +258,7 @@ function openSheet(html) {
 
 function setView(view) {
   state.view = view;
+  if (view !== "today") state.selectedCategoryId = null;
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.classList.toggle("is-active", tab.dataset.view === view);
   });
@@ -227,6 +269,7 @@ async function refresh(rangeDays = 400) {
   state.loading = true;
   render();
   try {
+    await loadCategories();
     await loadTrackers();
     const to = endOfDay(new Date());
     const from = startOfDay(addDays(new Date(), -rangeDays));
@@ -248,10 +291,13 @@ function render() {
   };
   if (state.view === "today") {
     todayLabel.textContent = formatDayTitle(selectedDayDate());
+    const cat = state.selectedCategoryId ? categoryById(state.selectedCategoryId) : null;
+    if (cat) pageTitle.textContent = cat.name;
+    else pageTitle.textContent = titles.today;
   } else {
     todayLabel.textContent = formatDayTitle(new Date());
+    pageTitle.textContent = titles[state.view] || "Tracknote";
   }
-  pageTitle.textContent = titles[state.view] || "Tracknote";
   if (state.loading && !state.trackers.length) {
     appEl.innerHTML = `<p class="empty">Laden…</p>`;
     return;
@@ -262,23 +308,71 @@ function render() {
   else renderTrackers();
 }
 
-function renderToday() {
-  const active = state.trackers.filter((t) => !t.archived);
-  const day = selectedDayDate();
-  const dayItems = entriesForDay(day);
-  const dayLabel = isSelectedToday() ? "vandaag" : "op deze dag";
-  appEl.innerHTML = `
+function dayNavHtml(day) {
+  return `
     <div class="day-nav">
       <button class="icon-btn" data-action="day-prev" type="button" aria-label="Vorige dag">‹</button>
       <p class="day-nav-label">${escapeHtml(formatDayTitle(day))}</p>
       <button class="icon-btn" data-action="day-next" type="button" aria-label="Volgende dag">›</button>
     </div>
+  `;
+}
+
+function categoryTile(category) {
+  const day = selectedDayDate();
+  const trackerCount = trackersInCategory(category.id).length;
+  const logs = categoryDayLogCount(category.id, day);
+  return `
+    <button
+      type="button"
+      class="category-tile"
+      data-open-category="${category.id}"
+      style="--tile-color:${escapeHtml(category.color)}"
+    >
+      <span class="category-tile-icon">${escapeHtml(category.icon || "▣")}</span>
+      <span class="category-tile-name">${escapeHtml(category.name)}</span>
+      <span class="category-tile-meta">${trackerCount} tracker${trackerCount === 1 ? "" : "s"} · ${logs} log${logs === 1 ? "" : "s"}</span>
+    </button>
+  `;
+}
+
+function renderToday() {
+  const day = selectedDayDate();
+  const dayItems = entriesForDay(day);
+  const dayLabel = isSelectedToday() ? "vandaag" : "op deze dag";
+
+  if (!state.selectedCategoryId) {
+    const cats = [...state.categories].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    const { cols, rows } = categoryGridLayout(Math.max(cats.length, 1));
+    appEl.classList.add("app--tiles");
+    appEl.innerHTML = `
+      ${dayNavHtml(day)}
+      <div class="toolbar toolbar-compact">
+        <p class="hint">${dayItems.length} log${dayItems.length === 1 ? "" : "s"} ${dayLabel}</p>
+        <button class="btn btn-ghost" data-action="open-log" type="button">Logs</button>
+      </div>
+      <div
+        class="category-stage"
+        style="grid-template-columns:repeat(${cols},minmax(0,1fr));grid-template-rows:repeat(${rows},minmax(0,1fr))"
+      >
+        ${cats.length ? cats.map(categoryTile).join("") : `<p class="empty">Nog geen categorieën. Voeg ze toe onder Trackers.</p>`}
+      </div>
+    `;
+    return;
+  }
+
+  appEl.classList.remove("app--tiles");
+  const trackers = trackersInCategory(state.selectedCategoryId);
+  const catLogs = categoryDayLogCount(state.selectedCategoryId, day);
+  appEl.innerHTML = `
+    ${dayNavHtml(day)}
     <div class="toolbar">
-      <p class="hint">${dayItems.length} log${dayItems.length === 1 ? "" : "s"} ${dayLabel}</p>
-      <button class="btn btn-ghost" data-action="open-log" type="button">Logs bewerken</button>
+      <button class="btn btn-ghost" data-action="category-back" type="button">← Terug</button>
+      <p class="hint">${catLogs} log${catLogs === 1 ? "" : "s"} ${dayLabel}</p>
+      <button class="btn btn-ghost" data-action="open-log" type="button">Logs</button>
     </div>
     <div class="grid tracker-grid">
-      ${active.map(trackerCard).join("") || `<p class="empty">Nog geen trackers. Maak er een aan.</p>`}
+      ${trackers.map(trackerCard).join("") || `<p class="empty">Geen trackers in deze categorie.</p>`}
     </div>
   `;
 }
@@ -311,6 +405,7 @@ function monthMatrix(year, month) {
 }
 
 function renderCalendar() {
+  appEl.classList.remove("app--tiles");
   const range = state.calendarRange;
   const now = new Date();
   const months = range === "month" ? 1 : range === "6m" ? 6 : 12;
@@ -396,6 +491,7 @@ function rangeStart(kind) {
 }
 
 function renderStats() {
+  appEl.classList.remove("app--tiles");
   const from = rangeStart(state.statsRange);
   const to = endOfDay(new Date());
   const entries = state.entries.filter((e) => {
@@ -492,22 +588,65 @@ function trackerStats(tracker, items) {
 }
 
 function renderTrackers() {
+  appEl.classList.remove("app--tiles");
   appEl.innerHTML = `
     <div class="toolbar">
-      <p class="hint">${state.trackers.length} trackers</p>
-      <button class="btn btn-primary" data-action="new-tracker" type="button" style="width:auto">Nieuwe tracker</button>
+      <p class="hint">${state.categories.length} cat. · ${state.trackers.length} trackers</p>
+      <div class="row">
+        <button class="btn btn-ghost" data-action="new-category" type="button">Categorie</button>
+        <button class="btn btn-primary" data-action="new-tracker" type="button" style="width:auto">Tracker</button>
+      </div>
     </div>
+    <h3 class="section-title">Categorieën</h3>
     <div class="grid">
-      ${state.trackers.map((tracker) => `
+      ${state.categories.map((category) => `
+        <article class="card tracker-card" data-edit-category="${category.id}">
+          <div class="swatch" style="background:${category.color}">${escapeHtml(category.icon || "▣")}</div>
+          <div class="meta">
+            <h3>${escapeHtml(category.name)}</h3>
+            <p>${trackersInCategory(category.id).length} trackers</p>
+          </div>
+          <span class="pill">${category.sort_order ?? 0}</span>
+        </article>
+      `).join("") || `<p class="empty">Nog geen categorieën.</p>`}
+    </div>
+    <h3 class="section-title">Trackers</h3>
+    <div class="grid">
+      ${state.trackers.map((tracker) => {
+        const cat = categoryById(tracker.category) || overigCategory();
+        return `
         <article class="card tracker-card" data-edit-tracker="${tracker.id}">
           <div class="swatch" style="background:${tracker.color};opacity:${tracker.archived ? 0.4 : 1}">${escapeHtml(tracker.icon || "●")}</div>
           <div class="meta">
             <h3>${escapeHtml(tracker.name)}</h3>
-            <p>${TYPE_LABELS[tracker.type] || tracker.type}${tracker.archived ? " · gearchiveerd" : ""}</p>
+            <p>${TYPE_LABELS[tracker.type] || tracker.type} · ${escapeHtml(cat?.name || "Overig")}${tracker.archived ? " · gearchiveerd" : ""}</p>
           </div>
           <span class="pill">${tracker.sort_order ?? 0}</span>
         </article>
-      `).join("")}
+      `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function categoryForm(category = null) {
+  const color = category?.color || COLORS[2];
+  return `
+    <h2 style="margin:0 0 8px">${category ? "Categorie bewerken" : "Nieuwe categorie"}</h2>
+    <label>Naam</label>
+    <input id="f-cat-name" value="${escapeHtml(category?.name || "")}" placeholder="Bijv. Gezondheid" />
+    <label>Icoon (emoji)</label>
+    <input id="f-cat-icon" value="${escapeHtml(category?.icon || "")}" placeholder="🩺" maxlength="8" />
+    <label>Kleur</label>
+    <div class="colors" id="cat-colors">
+      ${COLORS.map((c) => `<button class="color-dot ${c === color ? "is-active" : ""}" data-color="${c}" data-cat-color style="background:${c}" type="button"></button>`).join("")}
+    </div>
+    <input id="f-cat-color" value="${escapeHtml(color)}" />
+    <label>Volgorde</label>
+    <input id="f-cat-sort" type="number" value="${category?.sort_order ?? state.categories.length + 1}" />
+    <div class="actions">
+      ${category ? `<button class="btn btn-danger" data-delete-category="${category.id}" type="button">Verwijderen</button>` : ""}
+      <button class="btn btn-primary" data-save-category="${category?.id || "new"}" type="button">Opslaan</button>
     </div>
   `;
 }
@@ -539,6 +678,12 @@ function trackerForm(tracker = null) {
     <textarea id="f-options" placeholder="Paracetamol&#10;Ibuprofen">${escapeHtml(choices || (opts.min ? `${opts.min}-${opts.max}` : ""))}</textarea>
     <label>Beschrijving</label>
     <input id="f-desc" value="${escapeHtml(tracker?.description || "")}" />
+    <label>Categorie</label>
+    <select id="f-category">
+      ${state.categories.map((c) => `
+        <option value="${c.id}" ${(tracker?.category || overigCategory()?.id) === c.id ? "selected" : ""}>${escapeHtml(c.name)}</option>
+      `).join("")}
+    </select>
     <label>Volgorde</label>
     <input id="f-sort" type="number" value="${tracker?.sort_order ?? state.trackers.length + 1}" />
     <label class="row" style="margin-top:12px">
@@ -651,8 +796,30 @@ function parseOptions(type, raw) {
   return text ? { raw: text } : {};
 }
 
+async function saveCategory(id) {
+  const payload = {
+    name: document.getElementById("f-cat-name").value.trim(),
+    icon: document.getElementById("f-cat-icon").value.trim(),
+    color: document.getElementById("f-cat-color").value.trim() || COLORS[0],
+    sort_order: Number(document.getElementById("f-cat-sort").value || 0),
+  };
+  if (!payload.name) {
+    toast("Naam is verplicht");
+    return;
+  }
+  if (id === "new") {
+    await pbRequest("/api/collections/categories/records", { method: "POST", body: JSON.stringify(payload) });
+  } else {
+    await pbRequest(`/api/collections/categories/records/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+  }
+  closeSheet();
+  toast("Categorie opgeslagen");
+  await refresh();
+}
+
 async function saveTracker(id) {
   const type = document.getElementById("f-type").value;
+  const categoryId = document.getElementById("f-category")?.value || "";
   const payload = {
     name: document.getElementById("f-name").value.trim(),
     icon: document.getElementById("f-icon").value.trim(),
@@ -662,6 +829,7 @@ async function saveTracker(id) {
     description: document.getElementById("f-desc").value.trim(),
     sort_order: Number(document.getElementById("f-sort").value || 0),
     archived: document.getElementById("f-archived").checked,
+    category: categoryId || null,
     options: parseOptions(type, document.getElementById("f-options").value),
   };
   if (!payload.name) {
@@ -738,8 +906,13 @@ async function quickCheck(tracker) {
 }
 
 appEl.addEventListener("click", async (event) => {
-  const t = event.target.closest("[data-open-tracker],[data-quick],[data-action],[data-cal-range],[data-cal-filter],[data-stats-range],[data-day],[data-edit-tracker]");
+  const t = event.target.closest("[data-open-tracker],[data-open-category],[data-quick],[data-action],[data-cal-range],[data-cal-filter],[data-stats-range],[data-day],[data-edit-tracker],[data-edit-category]");
   if (!t) return;
+  if (t.dataset.openCategory) {
+    state.selectedCategoryId = t.dataset.openCategory;
+    render();
+    return;
+  }
   if (t.dataset.quick === "counter") {
     event.stopPropagation();
     const tracker = trackerById(t.dataset.id);
@@ -763,7 +936,16 @@ appEl.addEventListener("click", async (event) => {
     openSheet(trackerForm(trackerById(t.dataset.editTracker)));
     return;
   }
+  if (t.dataset.editCategory) {
+    openSheet(categoryForm(categoryById(t.dataset.editCategory)));
+    return;
+  }
+  if (t.dataset.action === "new-category") openSheet(categoryForm());
   if (t.dataset.action === "new-tracker") openSheet(trackerForm());
+  if (t.dataset.action === "category-back") {
+    state.selectedCategoryId = null;
+    render();
+  }
   if (t.dataset.action === "open-log") openSheet(todayLogSheet());
   if (t.dataset.action === "day-prev") {
     state.selectedDay = localISODate(addDays(selectedDayDate(), -1));
@@ -789,15 +971,20 @@ appEl.addEventListener("click", async (event) => {
 });
 
 sheetEl.addEventListener("click", async (event) => {
-  const t = event.target.closest("[data-close],[data-color],[data-choice],[data-scale],[data-save-tracker],[data-delete-tracker],[data-save-entry],[data-delete-entry],[data-edit-entry],[data-add-on-day],[data-log-tracker]");
+  const t = event.target.closest("[data-close],[data-color],[data-cat-color],[data-choice],[data-scale],[data-save-tracker],[data-delete-tracker],[data-save-category],[data-delete-category],[data-save-entry],[data-delete-entry],[data-edit-entry],[data-add-on-day],[data-log-tracker]");
   if (!t) return;
   if (t.dataset.close === "sheet") {
     closeSheet();
     return;
   }
+  if (t.dataset.catColor) {
+    document.getElementById("f-cat-color").value = t.dataset.color;
+    sheetEl.querySelectorAll("[data-cat-color]").forEach((el) => el.classList.toggle("is-active", el === t));
+    return;
+  }
   if (t.dataset.color) {
     document.getElementById("f-color").value = t.dataset.color;
-    sheetEl.querySelectorAll(".color-dot").forEach((el) => el.classList.toggle("is-active", el === t));
+    sheetEl.querySelectorAll(".color-dot:not([data-cat-color])").forEach((el) => el.classList.toggle("is-active", el === t));
     return;
   }
   if (t.dataset.choice) {
@@ -813,6 +1000,14 @@ sheetEl.addEventListener("click", async (event) => {
     return;
   }
   try {
+    if (t.dataset.saveCategory) await saveCategory(t.dataset.saveCategory);
+    if (t.dataset.deleteCategory) {
+      if (!confirm("Categorie verwijderen? Trackers blijven bestaan maar verliezen deze categorie.")) return;
+      await pbRequest(`/api/collections/categories/records/${t.dataset.deleteCategory}`, { method: "DELETE" });
+      closeSheet();
+      toast("Categorie verwijderd");
+      await refresh();
+    }
     if (t.dataset.saveTracker) await saveTracker(t.dataset.saveTracker);
     if (t.dataset.deleteTracker) {
       if (!confirm("Tracker en alle logs verwijderen?")) return;
