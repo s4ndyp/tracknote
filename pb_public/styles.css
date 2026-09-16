@@ -96,10 +96,23 @@ body.view-today .eyebrow {
   display: none;
 }
 
+.topbar-title-wrap {
+  min-width: 0;
+}
+
 body.view-today h1 {
   margin: 0;
-  font-size: 17px;
-  font-weight: 700;
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.app-version {
+  font-size: 0.68em;
+  font-weight: 600;
+  color: var(--muted);
+  margin-left: 0.35em;
+  vertical-align: baseline;
 }
 
 body.view-today .icon-btn#refreshBtn {
@@ -283,39 +296,6 @@ body.view-today .app.app--tiles {
   flex: 1;
 }
 
-.tracker-chip-grid--focus {
-  width: 100%;
-  height: 100%;
-  align-content: center;
-  justify-content: center;
-  justify-items: center;
-  grid-template-columns: repeat(var(--focus-cols, 3), var(--focus-cell, 64px));
-  grid-auto-rows: var(--focus-cell, 64px);
-  gap: var(--focus-gap, 6px);
-}
-
-.tracker-chip-grid--focus .tracker-chip {
-  width: var(--focus-cell, 64px);
-  height: var(--focus-cell, 64px);
-  max-width: 100%;
-  max-height: 100%;
-  border-radius: var(--chip-radius, 10px);
-  padding: calc(var(--focus-cell, 64px) * 0.07);
-}
-
-.tracker-chip-grid--focus .tracker-chip-label {
-  font-size: var(--chip-font, 11px);
-  -webkit-line-clamp: 5;
-}
-
-.tracker-chip-grid--focus .tracker-chip-badge {
-  min-width: var(--chip-badge-size, 16px);
-  height: var(--chip-badge-size, 16px);
-  font-size: var(--chip-badge-font, 10px);
-  top: calc(var(--focus-cell, 64px) * 0.06);
-  right: calc(var(--focus-cell, 64px) * 0.06);
-}
-
 @keyframes focus-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -350,6 +330,36 @@ body.view-today .app.app--tiles {
 .tracker-chip--preview {
   pointer-events: none;
   cursor: default;
+}
+
+.tracker-chip-grid.tracker-chip-grid--focus {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  align-content: center;
+  justify-content: center;
+}
+
+.tracker-chip-grid.tracker-chip-grid--focus > .tracker-chip {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none;
+  aspect-ratio: 1;
+  border-radius: var(--chip-radius, 10px);
+  padding: calc(var(--focus-cell, 64px) * 0.07);
+}
+
+.tracker-chip-grid.tracker-chip-grid--focus > .tracker-chip .tracker-chip-label {
+  font-size: var(--chip-font, 11px);
+  -webkit-line-clamp: 5;
+}
+
+.tracker-chip-grid.tracker-chip-grid--focus > .tracker-chip .tracker-chip-badge {
+  min-width: var(--chip-badge-size, 16px);
+  height: var(--chip-badge-size, 16px);
+  font-size: var(--chip-badge-font, 10px);
+  top: calc(var(--focus-cell, 64px) * 0.06);
+  right: calc(var(--focus-cell, 64px) * 0.06);
 }
 
 .tracker-chip.is-active {
