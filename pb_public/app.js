@@ -81,6 +81,20 @@ function formatDayTitle(date) {
   });
 }
 
+function formatDayShort(date) {
+  return date.toLocaleDateString("nl-NL", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function trackerChipLabel(name) {
+  const text = String(name || "").trim();
+  if (text.length <= 14) return text;
+  return `${text.slice(0, 13)}…`;
+}
+
 function selectedDayDate() {
   return new Date(`${state.selectedDay}T12:00:00`);
 }
@@ -298,8 +312,9 @@ function render() {
     stats: "Statistieken",
     trackers: "Trackers",
   };
+  document.body.classList.toggle("view-today", state.view === "today");
   if (state.view === "today") {
-    todayLabel.textContent = formatDayTitle(selectedDayDate());
+    todayLabel.textContent = formatDayShort(selectedDayDate());
     pageTitle.textContent = titles.today;
   } else {
     todayLabel.textContent = formatDayTitle(new Date());
@@ -315,12 +330,16 @@ function render() {
   else renderTrackers();
 }
 
-function dayNavHtml(day) {
+function todayBarHtml(day, dayItems, dayLabel) {
   return `
-    <div class="day-nav">
-      <button class="icon-btn" data-action="day-prev" type="button" aria-label="Vorige dag">‹</button>
-      <p class="day-nav-label">${escapeHtml(formatDayTitle(day))}</p>
-      <button class="icon-btn" data-action="day-next" type="button" aria-label="Volgende dag">›</button>
+    <div class="today-bar">
+      <button class="icon-btn icon-btn-sm" data-action="day-prev" type="button" aria-label="Vorige dag">‹</button>
+      <div class="today-bar-mid">
+        <p class="today-bar-date">${escapeHtml(formatDayShort(day))}</p>
+        <p class="today-bar-meta">${dayItems.length} log${dayItems.length === 1 ? "" : "s"} ${dayLabel}</p>
+      </div>
+      <button class="icon-btn icon-btn-sm" data-action="day-next" type="button" aria-label="Volgende dag">›</button>
+      <button class="btn btn-ghost btn-sm" data-action="open-log" type="button">Logs</button>
     </div>
   `;
 }
@@ -342,8 +361,8 @@ function trackerChipMeta(tracker, day) {
     const total = items.reduce((sum, e) => sum + Number(e.value_number || 1), 0);
     return { active: true, badge: String(total) };
   }
-  if (tracker.type === "check") return { active: true, badge: "✓" };
-  return { active: true, badge: "•" };
+  if (tracker.type === "check") return { active: true, badge: "" };
+  return { active: true, badge: "" };
 }
 
 function categoryTrackerChip(tracker) {
@@ -359,7 +378,7 @@ function categoryTrackerChip(tracker) {
       aria-label="${escapeHtml(title)}"
       style="--chip-color:${escapeHtml(tracker.color)}"
     >
-      <span class="tracker-chip-icon">${escapeHtml(tracker.icon || "●")}</span>
+      <span class="tracker-chip-label">${escapeHtml(trackerChipLabel(tracker.name))}</span>
       ${meta.badge ? `<span class="tracker-chip-badge">${escapeHtml(meta.badge)}</span>` : ""}
     </button>
   `;
@@ -393,11 +412,7 @@ function renderToday() {
   const { cols, rows } = categoryGridLayout(Math.max(cats.length, 1));
   appEl.classList.add("app--tiles");
   appEl.innerHTML = `
-    ${dayNavHtml(day)}
-    <div class="toolbar toolbar-compact">
-      <p class="hint">${dayItems.length} log${dayItems.length === 1 ? "" : "s"} ${dayLabel}</p>
-      <button class="btn btn-ghost" data-action="open-log" type="button">Logs</button>
-    </div>
+    ${todayBarHtml(day, dayItems, dayLabel)}
     <div
       class="category-stage"
       style="grid-template-columns:repeat(${cols},minmax(0,1fr));grid-template-rows:repeat(${rows},minmax(0,1fr))"
