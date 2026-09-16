@@ -1,0 +1,8 @@
+.git
+.github
+.gitignore
+pb_data
+*.md
+.env
+.env.*
+.DS_Store

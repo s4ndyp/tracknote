@@ -1,0 +1,17 @@
+{
+  "name": "Tracknote",
+  "short_name": "Tracknote",
+  "description": "Dagelijks tracken van gewoontes, medicijnen en meer",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0d12",
+  "theme_color": "#0b0d12",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
