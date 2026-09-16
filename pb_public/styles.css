@@ -28,6 +28,9 @@ body {
     var(--bg);
   color: var(--text);
   min-height: 100%;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
 }
 
 button, input, select, textarea {
@@ -80,6 +83,80 @@ h1 {
   width: min(980px, 100%);
   margin: 0 auto;
   padding: 8px 16px var(--tabbar-h);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.app.app--tiles {
+  width: 100%;
+  max-width: none;
+  padding: 8px 12px var(--tabbar-h);
+}
+
+.section-title {
+  margin: 18px 0 10px;
+  font-size: 14px;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.toolbar-compact {
+  margin-bottom: 8px;
+}
+
+.category-stage {
+  flex: 1;
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+  height: 100%;
+}
+
+.category-tile {
+  border-radius: calc(var(--radius) + 4px);
+  border: 1px solid color-mix(in srgb, var(--tile-color) 35%, var(--line));
+  background:
+    radial-gradient(120% 80% at 0% 0%, color-mix(in srgb, var(--tile-color) 28%, transparent), transparent 55%),
+    var(--card);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: clamp(14px, 3vw, 22px);
+  text-align: left;
+  min-height: 0;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+
+.category-tile:active {
+  transform: scale(0.98);
+}
+
+.category-tile-icon {
+  font-size: clamp(30px, 7vw, 48px);
+  line-height: 1;
+}
+
+.category-tile-name {
+  font-size: clamp(18px, 4.5vw, 26px);
+  font-weight: 780;
+  letter-spacing: -0.03em;
+}
+
+.category-tile-meta {
+  font-size: clamp(12px, 2.8vw, 14px);
+  color: var(--muted);
+}
+
+@media (min-width: 720px) {
+  .app.app--tiles {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
 }
 
 .grid {
