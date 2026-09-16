@@ -31,8 +31,12 @@ const state = {
   calendarFilterTrackerId: null,
   statsRange: "month",
   selectedDay: localISODate(new Date()),
+  expandedCategoryId: null,
+  categoryExpandRect: null,
   loading: false,
 };
+
+const CATEGORY_FOCUS_MARGIN = 14;
 
 const appEl = document.getElementById("app");
 const sheetEl = document.getElementById("sheet");
@@ -281,6 +285,8 @@ function setView(view) {
   state.view = view;
   if (view === "today") {
     state.selectedDay = localISODate(new Date());
+    state.expandedCategoryId = null;
+    state.categoryExpandRect = null;
   }
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.classList.toggle("is-active", tab.dataset.view === view);
@@ -302,6 +308,9 @@ async function refresh(rangeDays = 400) {
   } finally {
     state.loading = false;
     render();
+    if (state.view === "today" && state.expandedCategoryId) {
+      syncCategoryFocusPanel({ animate: false });
+    }
   }
 }
 
@@ -365,43 +374,172 @@ function trackerChipMeta(tracker, day) {
   return { active: true, badge: "" };
 }
 
-function categoryTrackerChip(tracker) {
+function categoryTrackerChip(tracker, interactive) {
   const day = selectedDayDate();
   const meta = trackerChipMeta(tracker, day);
   const title = `${tracker.name}: ${summaryFor(tracker, day)}`;
+  const tag = interactive ? "button" : "span";
+  const actionAttrs = interactive
+    ? `type="button" data-open-tracker="${tracker.id}"`
+    : `aria-hidden="true"`;
   return `
-    <button
-      type="button"
-      class="tracker-chip ${meta.active ? "is-active" : ""}"
-      data-open-tracker="${tracker.id}"
+    <${tag}
+      ${actionAttrs}
+      class="tracker-chip ${meta.active ? "is-active" : ""} ${interactive ? "" : "tracker-chip--preview"}"
       title="${escapeHtml(title)}"
-      aria-label="${escapeHtml(title)}"
+      ${interactive ? `aria-label="${escapeHtml(title)}"` : ""}
       style="--chip-color:${escapeHtml(tracker.color)}"
     >
       <span class="tracker-chip-label">${escapeHtml(trackerChipLabel(tracker.name))}</span>
       ${meta.badge ? `<span class="tracker-chip-badge">${escapeHtml(meta.badge)}</span>` : ""}
-    </button>
+    </${tag}>
+  `;
+}
+
+function categoryTileContent(category, interactiveTrackers) {
+  const day = selectedDayDate();
+  const trackers = trackersInCategory(category.id);
+  return `
+    <span class="category-tile-head">
+      <span class="category-tile-name">${escapeHtml(category.name)}</span>
+      <span class="category-tile-meta">${escapeHtml(categoryStatusText(category.id, day))}</span>
+    </span>
+    <span class="category-tile-frame">
+      <span class="tracker-chip-grid ${interactiveTrackers ? "tracker-chip-grid--focus" : ""}">
+        ${trackers.length
+          ? trackers.map((t) => categoryTrackerChip(t, interactiveTrackers)).join("")
+          : `<span class="category-tile-empty">Geen trackers</span>`}
+      </span>
+    </span>
   `;
 }
 
 function categoryTile(category) {
-  const day = selectedDayDate();
-  const trackers = trackersInCategory(category.id);
+  const isExpandedSource = state.expandedCategoryId === category.id;
   return `
-    <article class="category-tile" style="--tile-color:${escapeHtml(category.color)}">
-      <header class="category-tile-head">
-        <h3 class="category-tile-name">${escapeHtml(category.name)}</h3>
-        <p class="category-tile-meta">${escapeHtml(categoryStatusText(category.id, day))}</p>
-      </header>
-      <div class="category-tile-frame">
-        <div class="tracker-chip-grid">
-          ${trackers.length
-            ? trackers.map(categoryTrackerChip).join("")
-            : `<p class="category-tile-empty">Geen trackers</p>`}
-        </div>
-      </div>
-    </article>
+    <button
+      type="button"
+      class="category-tile category-tile-open ${isExpandedSource ? "is-source-hidden" : ""}"
+      data-category-id="${category.id}"
+      data-expand-category="${category.id}"
+      style="--tile-color:${escapeHtml(category.color)}"
+    >
+      ${categoryTileContent(category, false)}
+    </button>
   `;
+}
+
+function computeExpandedFocusRect() {
+  const topbar = document.querySelector(".topbar");
+  const tabbar = document.querySelector(".tabbar");
+  const top = (topbar?.getBoundingClientRect().bottom || 0) + CATEGORY_FOCUS_MARGIN;
+  const bottomLimit = (tabbar?.getBoundingClientRect().top || window.innerHeight) - CATEGORY_FOCUS_MARGIN;
+  const left = CATEGORY_FOCUS_MARGIN;
+  const width = window.innerWidth - CATEGORY_FOCUS_MARGIN * 2;
+  const height = Math.max(220, bottomLimit - top);
+  return { top, left, width, height };
+}
+
+function applyFocusPanelRect(panel, rect) {
+  panel.style.top = `${rect.top}px`;
+  panel.style.left = `${rect.left}px`;
+  panel.style.width = `${rect.width}px`;
+  panel.style.height = `${rect.height}px`;
+}
+
+function syncCategoryFocusPanel({ animate = false } = {}) {
+  const category = categoryById(state.expandedCategoryId);
+  const panel = document.getElementById("categoryFocusPanel");
+  const layer = document.getElementById("categoryFocusLayer");
+  if (!category || !panel || !layer) return;
+
+  panel.style.setProperty("--tile-color", category.color);
+  panel.innerHTML = `
+    <div class="category-focus-inner" data-focus-inner>
+      ${categoryTileContent(category, true)}
+    </div>
+  `;
+
+  layer.classList.add("is-open");
+  layer.setAttribute("aria-hidden", "false");
+
+  if (animate && state.categoryExpandRect) {
+    applyFocusPanelRect(panel, state.categoryExpandRect);
+    panel.classList.remove("is-expanded");
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        applyFocusPanelRect(panel, computeExpandedFocusRect());
+        panel.classList.add("is-expanded");
+      });
+    });
+    return;
+  }
+
+  applyFocusPanelRect(panel, computeExpandedFocusRect());
+  panel.classList.add("is-expanded");
+}
+
+function collapseCategoryPanel(animated = true) {
+  const panel = document.getElementById("categoryFocusPanel");
+  const layer = document.getElementById("categoryFocusLayer");
+  if (!panel || !layer || !state.expandedCategoryId) {
+    state.expandedCategoryId = null;
+    state.categoryExpandRect = null;
+    renderToday();
+    return;
+  }
+
+  const finish = () => {
+    state.expandedCategoryId = null;
+    state.categoryExpandRect = null;
+    panel.classList.remove("is-expanded");
+    layer.classList.remove("is-open");
+    layer.setAttribute("aria-hidden", "true");
+    renderToday();
+  };
+
+  if (!animated || !state.categoryExpandRect) {
+    finish();
+    return;
+  }
+
+  panel.classList.remove("is-expanded");
+  applyFocusPanelRect(panel, state.categoryExpandRect);
+
+  let done = false;
+  const onEnd = () => {
+    if (done) return;
+    done = true;
+    panel.removeEventListener("transitionend", onEnd);
+    clearTimeout(fallback);
+    finish();
+  };
+  const fallback = setTimeout(onEnd, 420);
+  panel.addEventListener("transitionend", onEnd);
+}
+
+function expandCategory(categoryId) {
+  if (state.expandedCategoryId === categoryId) {
+    collapseCategoryPanel();
+    return;
+  }
+  if (state.expandedCategoryId) {
+    state.expandedCategoryId = null;
+    state.categoryExpandRect = null;
+    renderToday();
+  }
+  const tile = appEl.querySelector(`[data-category-id="${categoryId}"]`);
+  if (!tile || tile.classList.contains("is-source-hidden")) return;
+  const rect = tile.getBoundingClientRect();
+  state.expandedCategoryId = categoryId;
+  state.categoryExpandRect = {
+    top: rect.top,
+    left: rect.left,
+    width: rect.width,
+    height: rect.height,
+  };
+  renderToday();
+  syncCategoryFocusPanel({ animate: true });
 }
 
 function renderToday() {
@@ -410,14 +548,21 @@ function renderToday() {
   const dayLabel = isSelectedToday() ? "vandaag" : "op deze dag";
   const cats = [...state.categories].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
   const { cols, rows } = categoryGridLayout(Math.max(cats.length, 1));
+  const stageDimmed = Boolean(state.expandedCategoryId);
   appEl.classList.add("app--tiles");
   appEl.innerHTML = `
     ${todayBarHtml(day, dayItems, dayLabel)}
-    <div
-      class="category-stage"
-      style="grid-template-columns:repeat(${cols},minmax(0,1fr));grid-template-rows:repeat(${rows},minmax(0,1fr))"
-    >
-      ${cats.length ? cats.map(categoryTile).join("") : `<p class="empty">Nog geen categorieën. Voeg ze toe onder Trackers.</p>`}
+    <div class="category-stage-wrap">
+      <div
+        class="category-stage ${stageDimmed ? "is-dimmed" : ""}"
+        style="grid-template-columns:repeat(${cols},minmax(0,1fr));grid-template-rows:repeat(${rows},minmax(0,1fr))"
+      >
+        ${cats.length ? cats.map(categoryTile).join("") : `<p class="empty">Nog geen categorieën. Voeg ze toe onder Trackers.</p>`}
+      </div>
+      <div class="category-focus-layer" id="categoryFocusLayer" aria-hidden="true">
+        <button type="button" class="category-focus-backdrop" data-action="collapse-category" aria-label="Sluit categorie"></button>
+        <article class="category-focus-panel" id="categoryFocusPanel" style="--tile-color:#6366f1"></article>
+      </div>
     </div>
   `;
 }
@@ -941,8 +1086,19 @@ async function quickCheck(tracker) {
 }
 
 appEl.addEventListener("click", async (event) => {
-  const t = event.target.closest("[data-open-tracker],[data-quick],[data-action],[data-cal-range],[data-cal-filter],[data-stats-range],[data-day],[data-edit-tracker],[data-edit-category]");
+  if (event.target.closest("[data-focus-inner]")) {
+    event.stopPropagation();
+  }
+  const t = event.target.closest("[data-open-tracker],[data-expand-category],[data-quick],[data-action],[data-cal-range],[data-cal-filter],[data-stats-range],[data-day],[data-edit-tracker],[data-edit-category]");
   if (!t) return;
+  if (t.dataset.expandCategory) {
+    expandCategory(t.dataset.expandCategory);
+    return;
+  }
+  if (t.dataset.action === "collapse-category") {
+    collapseCategoryPanel();
+    return;
+  }
   if (t.dataset.quick === "counter") {
     event.stopPropagation();
     const tracker = trackerById(t.dataset.id);
@@ -974,10 +1130,14 @@ appEl.addEventListener("click", async (event) => {
   if (t.dataset.action === "new-tracker") openSheet(trackerForm());
   if (t.dataset.action === "open-log") openSheet(todayLogSheet());
   if (t.dataset.action === "day-prev") {
+    state.expandedCategoryId = null;
+    state.categoryExpandRect = null;
     state.selectedDay = localISODate(addDays(selectedDayDate(), -1));
     render();
   }
   if (t.dataset.action === "day-next") {
+    state.expandedCategoryId = null;
+    state.categoryExpandRect = null;
     state.selectedDay = localISODate(addDays(selectedDayDate(), 1));
     render();
   }
