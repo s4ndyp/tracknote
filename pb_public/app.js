@@ -14,12 +14,22 @@ const COLORS = [
 
 const DOW = ["ma", "di", "wo", "do", "vr", "za", "zo"];
 
+function pad(n) {
+  return String(n).padStart(2, "0");
+}
+
+function localISODate(date = new Date()) {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 const state = {
   view: "today",
   trackers: [],
   entries: [],
   calendarRange: "month",
+  calendarFilterTrackerId: null,
   statsRange: "month",
+  selectedDay: localISODate(new Date()),
   loading: false,
 };
 
@@ -28,14 +38,6 @@ const sheetEl = document.getElementById("sheet");
 const sheetBody = document.getElementById("sheetBody");
 const pageTitle = document.getElementById("pageTitle");
 const todayLabel = document.getElementById("todayLabel");
-
-function pad(n) {
-  return String(n).padStart(2, "0");
-}
-
-function localISODate(date = new Date()) {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
 
 function startOfDay(date) {
   const d = new Date(date);
@@ -76,6 +78,22 @@ function formatDayTitle(date) {
     day: "numeric",
     month: "long",
   });
+}
+
+function selectedDayDate() {
+  return new Date(`${state.selectedDay}T12:00:00`);
+}
+
+function isSelectedToday() {
+  return state.selectedDay === localISODate(new Date());
+}
+
+function logTimestampForSelectedDay() {
+  const now = new Date();
+  if (isSelectedToday()) return now;
+  return new Date(
+    `${state.selectedDay}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
+  );
 }
 
 function formatTime(date) {
@@ -222,13 +240,17 @@ async function refresh(rangeDays = 400) {
 }
 
 function render() {
-  todayLabel.textContent = formatDayTitle(new Date());
   const titles = {
-    today: "Vandaag",
+    today: isSelectedToday() ? "Vandaag" : "Logboek",
     calendar: "Kalender",
     stats: "Statistieken",
     trackers: "Trackers",
   };
+  if (state.view === "today") {
+    todayLabel.textContent = formatDayTitle(selectedDayDate());
+  } else {
+    todayLabel.textContent = formatDayTitle(new Date());
+  }
   pageTitle.textContent = titles[state.view] || "Tracknote";
   if (state.loading && !state.trackers.length) {
     appEl.innerHTML = `<p class="empty">Laden…</p>`;
@@ -242,10 +264,17 @@ function render() {
 
 function renderToday() {
   const active = state.trackers.filter((t) => !t.archived);
-  const todayItems = entriesForDay(new Date());
+  const day = selectedDayDate();
+  const dayItems = entriesForDay(day);
+  const dayLabel = isSelectedToday() ? "vandaag" : "op deze dag";
   appEl.innerHTML = `
+    <div class="day-nav">
+      <button class="icon-btn" data-action="day-prev" type="button" aria-label="Vorige dag">‹</button>
+      <p class="day-nav-label">${escapeHtml(formatDayTitle(day))}</p>
+      <button class="icon-btn" data-action="day-next" type="button" aria-label="Volgende dag">›</button>
+    </div>
     <div class="toolbar">
-      <p class="hint">${todayItems.length} log${todayItems.length === 1 ? "" : "s"} vandaag</p>
+      <p class="hint">${dayItems.length} log${dayItems.length === 1 ? "" : "s"} ${dayLabel}</p>
       <button class="btn btn-ghost" data-action="open-log" type="button">Logs bewerken</button>
     </div>
     <div class="grid tracker-grid">
@@ -255,11 +284,12 @@ function renderToday() {
 }
 
 function trackerCard(tracker) {
-  const value = summaryFor(tracker);
+  const day = selectedDayDate();
+  const value = summaryFor(tracker, day);
   const action = tracker.type === "counter"
     ? `<button class="plus" data-quick="counter" data-id="${tracker.id}" type="button">+</button>`
     : tracker.type === "check"
-      ? `<span class="pill" style="color:${tracker.color}">${entriesForTracker(tracker.id, new Date()).length ? "✓" : "○"}</span>`
+      ? `<span class="pill" style="color:${tracker.color}">${entriesForTracker(tracker.id, day).length ? "✓" : "○"}</span>`
       : `<span class="pill">${escapeHtml(String(value).slice(0, 10))}</span>`;
   return `
     <article class="card tracker-card" data-open-tracker="${tracker.id}">
@@ -295,9 +325,12 @@ function renderCalendar() {
       <button data-cal-range="6m" class="${range === "6m" ? "is-active" : ""}" type="button">6 maanden</button>
       <button data-cal-range="year" class="${range === "year" ? "is-active" : ""}" type="button">Jaar</button>
     </div>
-    <div class="legend">
+    <div class="legend filters" role="group" aria-label="Filter op tracker">
+      <button type="button" class="filter-chip ${state.calendarFilterTrackerId ? "" : "is-active"}" data-cal-filter="all">Alle</button>
       ${state.trackers.filter((t) => !t.archived).map((t) => `
-        <span><i class="dot" style="background:${t.color}"></i>${escapeHtml(t.name)}</span>
+        <button type="button" class="filter-chip ${state.calendarFilterTrackerId === t.id ? "is-active" : ""}" data-cal-filter="${t.id}">
+          <i class="dot" style="background:${t.color}"></i>${escapeHtml(t.name)}
+        </button>
       `).join("")}
     </div>
     <div class="mini-months ${range === "year" ? "year" : ""}">
@@ -306,9 +339,23 @@ function renderCalendar() {
   `;
 }
 
+function calendarEntriesForDay(date) {
+  let items = entriesForDay(date);
+  if (state.calendarFilterTrackerId) {
+    items = items.filter((e) => e.tracker === state.calendarFilterTrackerId);
+  }
+  return items;
+}
+
 function dotsForDay(date) {
+  const items = calendarEntriesForDay(date);
+  if (state.calendarFilterTrackerId) {
+    const tracker = trackerById(state.calendarFilterTrackerId);
+    const color = tracker?.color || "#64748b";
+    return items.slice(0, 8).map(() => `<i class="dot" style="background:${color}"></i>`).join("");
+  }
   const groups = new Map();
-  entriesForDay(date).forEach((entry) => {
+  items.forEach((entry) => {
     const tracker = trackerById(entry.tracker);
     if (!tracker) return;
     groups.set(tracker.id, tracker.color);
@@ -550,7 +597,7 @@ function logForm(tracker, entry = null, date = new Date()) {
 
 function daySheet(dateStr) {
   const date = new Date(`${dateStr}T12:00:00`);
-  const items = entriesForDay(date);
+  const items = calendarEntriesForDay(date);
   return `
     <h2 style="margin:0 0 8px">${formatDayTitle(date)}</h2>
     ${items.length ? items.map((entry) => {
@@ -589,7 +636,7 @@ function pickTrackerSheet(dateStr) {
 }
 
 function todayLogSheet() {
-  return daySheet(localISODate(new Date()));
+  return daySheet(state.selectedDay);
 }
 
 function parseOptions(type, raw) {
@@ -663,7 +710,7 @@ async function quickCounter(tracker) {
     body: JSON.stringify({
       tracker: tracker.id,
       value_number: 1,
-      logged_at: toPbDate(new Date()),
+      logged_at: toPbDate(logTimestampForSelectedDay()),
     }),
   });
   toast(`${tracker.name} +1`);
@@ -671,7 +718,8 @@ async function quickCounter(tracker) {
 }
 
 async function quickCheck(tracker) {
-  const existing = entriesForTracker(tracker.id, new Date());
+  const day = selectedDayDate();
+  const existing = entriesForTracker(tracker.id, day);
   if (existing.length) {
     await pbRequest(`/api/collections/entries/records/${existing[0].id}`, { method: "DELETE" });
     toast(`${tracker.name} ongedaan`);
@@ -681,7 +729,7 @@ async function quickCheck(tracker) {
       body: JSON.stringify({
         tracker: tracker.id,
         value_number: 1,
-        logged_at: toPbDate(new Date()),
+        logged_at: toPbDate(logTimestampForSelectedDay()),
       }),
     });
     toast(`${tracker.name} gedaan`);
@@ -690,7 +738,7 @@ async function quickCheck(tracker) {
 }
 
 appEl.addEventListener("click", async (event) => {
-  const t = event.target.closest("[data-open-tracker],[data-quick],[data-action],[data-cal-range],[data-stats-range],[data-day],[data-edit-tracker]");
+  const t = event.target.closest("[data-open-tracker],[data-quick],[data-action],[data-cal-range],[data-cal-filter],[data-stats-range],[data-day],[data-edit-tracker]");
   if (!t) return;
   if (t.dataset.quick === "counter") {
     event.stopPropagation();
@@ -708,7 +756,7 @@ appEl.addEventListener("click", async (event) => {
       await quickCounter(tracker);
       return;
     }
-    openSheet(logForm(tracker));
+    openSheet(logForm(tracker, null, logTimestampForSelectedDay()));
     return;
   }
   if (t.dataset.editTracker) {
@@ -717,6 +765,18 @@ appEl.addEventListener("click", async (event) => {
   }
   if (t.dataset.action === "new-tracker") openSheet(trackerForm());
   if (t.dataset.action === "open-log") openSheet(todayLogSheet());
+  if (t.dataset.action === "day-prev") {
+    state.selectedDay = localISODate(addDays(selectedDayDate(), -1));
+    render();
+  }
+  if (t.dataset.action === "day-next") {
+    state.selectedDay = localISODate(addDays(selectedDayDate(), 1));
+    render();
+  }
+  if (t.dataset.calFilter) {
+    state.calendarFilterTrackerId = t.dataset.calFilter === "all" ? null : t.dataset.calFilter;
+    renderCalendar();
+  }
   if (t.dataset.calRange) {
     state.calendarRange = t.dataset.calRange;
     renderCalendar();

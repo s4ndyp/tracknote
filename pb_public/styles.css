@@ -437,12 +437,39 @@ textarea { min-height: 90px; resize: vertical; }
   gap: 8px;
   margin: 10px 0 16px;
 }
-.legend span {
+
+.filter-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
   color: var(--muted);
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+
+.filter-chip.is-active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--card));
+}
+
+.day-nav {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.day-nav-label {
+  margin: 0;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
 }
 
 .heat {
