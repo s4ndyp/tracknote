@@ -33,10 +33,13 @@ const state = {
   selectedDay: localISODate(new Date()),
   expandedCategoryId: null,
   categoryExpandRect: null,
+  categoryExpandMetrics: null,
   loading: false,
 };
 
-const CATEGORY_FOCUS_MARGIN = 14;
+const CATEGORY_FOCUS_MARGIN = 28;
+const PREVIEW_CHIP_MIN = 56;
+const PREVIEW_CHIP_GAP = 6;
 
 const appEl = document.getElementById("app");
 const sheetEl = document.getElementById("sheet");
@@ -287,6 +290,7 @@ function setView(view) {
     state.selectedDay = localISODate(new Date());
     state.expandedCategoryId = null;
     state.categoryExpandRect = null;
+    state.categoryExpandMetrics = null;
   }
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.classList.toggle("is-active", tab.dataset.view === view);
@@ -447,6 +451,45 @@ function applyFocusPanelRect(panel, rect) {
   panel.style.height = `${rect.height}px`;
 }
 
+function previewGridColumns(frameWidth) {
+  return Math.max(1, Math.floor((frameWidth + PREVIEW_CHIP_GAP) / (PREVIEW_CHIP_MIN + PREVIEW_CHIP_GAP)));
+}
+
+function applyFocusTrackerScale(panel) {
+  const metrics = state.categoryExpandMetrics;
+  const grid = panel.querySelector(".tracker-chip-grid--focus");
+  const frame = panel.querySelector(".category-tile-frame");
+  if (!grid || !frame || !metrics?.frameW) return;
+
+  const count = grid.querySelectorAll(".tracker-chip").length;
+  if (!count) return;
+
+  const cols = previewGridColumns(metrics.frameW);
+  const rows = Math.ceil(count / cols);
+  const padX = parseFloat(getComputedStyle(frame).paddingLeft) + parseFloat(getComputedStyle(frame).paddingRight);
+  const padY = parseFloat(getComputedStyle(frame).paddingTop) + parseFloat(getComputedStyle(frame).paddingBottom);
+  const innerW = Math.max(0, frame.clientWidth - padX);
+  const innerH = Math.max(0, frame.clientHeight - padY);
+
+  const cellW = (innerW - PREVIEW_CHIP_GAP * (cols - 1)) / cols;
+  const cellH = (innerH - PREVIEW_CHIP_GAP * (rows - 1)) / rows;
+  const cell = Math.max(PREVIEW_CHIP_MIN, Math.min(cellW, cellH));
+
+  grid.style.setProperty("--focus-cols", String(cols));
+  grid.style.setProperty("--focus-gap", `${PREVIEW_CHIP_GAP}px`);
+  grid.style.setProperty("--focus-cell", `${cell}px`);
+  grid.style.setProperty("--chip-font", `${Math.max(10, Math.min(cell * 0.19, 22))}px`);
+  grid.style.setProperty("--chip-radius", `${Math.max(8, cell * 0.18)}px`);
+  grid.style.setProperty("--chip-badge-size", `${Math.max(14, cell * 0.28)}px`);
+  grid.style.setProperty("--chip-badge-font", `${Math.max(9, cell * 0.16)}px`);
+}
+
+function scheduleFocusTrackerScale(panel) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => applyFocusTrackerScale(panel));
+  });
+}
+
 function syncCategoryFocusPanel({ animate = false } = {}) {
   const category = categoryById(state.expandedCategoryId);
   const panel = document.getElementById("categoryFocusPanel");
@@ -470,6 +513,7 @@ function syncCategoryFocusPanel({ animate = false } = {}) {
       requestAnimationFrame(() => {
         applyFocusPanelRect(panel, computeExpandedFocusRect());
         panel.classList.add("is-expanded");
+        scheduleFocusTrackerScale(panel);
       });
     });
     return;
@@ -477,6 +521,7 @@ function syncCategoryFocusPanel({ animate = false } = {}) {
 
   applyFocusPanelRect(panel, computeExpandedFocusRect());
   panel.classList.add("is-expanded");
+  scheduleFocusTrackerScale(panel);
 }
 
 function collapseCategoryPanel(animated = true) {
@@ -485,6 +530,7 @@ function collapseCategoryPanel(animated = true) {
   if (!panel || !layer || !state.expandedCategoryId) {
     state.expandedCategoryId = null;
     state.categoryExpandRect = null;
+    state.categoryExpandMetrics = null;
     renderToday();
     return;
   }
@@ -492,6 +538,7 @@ function collapseCategoryPanel(animated = true) {
   const finish = () => {
     state.expandedCategoryId = null;
     state.categoryExpandRect = null;
+    state.categoryExpandMetrics = null;
     panel.classList.remove("is-expanded");
     layer.classList.remove("is-open");
     layer.setAttribute("aria-hidden", "true");
@@ -526,12 +573,18 @@ function expandCategory(categoryId) {
   if (state.expandedCategoryId) {
     state.expandedCategoryId = null;
     state.categoryExpandRect = null;
+    state.categoryExpandMetrics = null;
     renderToday();
   }
   const tile = appEl.querySelector(`[data-category-id="${categoryId}"]`);
   if (!tile || tile.classList.contains("is-source-hidden")) return;
+  const frame = tile.querySelector(".category-tile-frame");
   const rect = tile.getBoundingClientRect();
   state.expandedCategoryId = categoryId;
+  state.categoryExpandMetrics = {
+    frameW: frame?.clientWidth || rect.width,
+    frameH: frame?.clientHeight || rect.height * 0.65,
+  };
   state.categoryExpandRect = {
     top: rect.top,
     left: rect.left,
@@ -1132,12 +1185,14 @@ appEl.addEventListener("click", async (event) => {
   if (t.dataset.action === "day-prev") {
     state.expandedCategoryId = null;
     state.categoryExpandRect = null;
+    state.categoryExpandMetrics = null;
     state.selectedDay = localISODate(addDays(selectedDayDate(), -1));
     render();
   }
   if (t.dataset.action === "day-next") {
     state.expandedCategoryId = null;
     state.categoryExpandRect = null;
+    state.categoryExpandMetrics = null;
     state.selectedDay = localISODate(addDays(selectedDayDate(), 1));
     render();
   }
