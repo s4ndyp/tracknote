@@ -14,6 +14,7 @@
   --radius: 18px;
   --tabbar-h: calc(72px + env(safe-area-inset-bottom));
   --topbar-h: 84px;
+  --topbar-h-compact: 52px;
 }
 
 * { box-sizing: border-box; }
@@ -79,6 +80,39 @@ h1 {
   font-size: 18px;
 }
 
+.icon-btn-sm {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+body.view-today .topbar {
+  padding: calc(6px + env(safe-area-inset-top)) 12px 4px;
+}
+
+body.view-today .eyebrow {
+  display: none;
+}
+
+body.view-today h1 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+body.view-today .icon-btn#refreshBtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  font-size: 15px;
+}
+
+body.view-today .app.app--tiles {
+  padding-top: 4px;
+}
+
 .app {
   width: min(980px, 100%);
   margin: 0 auto;
@@ -126,19 +160,19 @@ h1 {
 
 .category-tile-head {
   flex: 0 0 auto;
-  padding: 0 2px;
+  padding: 0 1px;
 }
 
 .category-tile-name {
   margin: 0;
-  font-size: clamp(16px, 3.8vw, 22px);
-  font-weight: 780;
-  letter-spacing: -0.03em;
+  font-size: clamp(14px, 3.2vw, 18px);
+  font-weight: 750;
+  letter-spacing: -0.02em;
 }
 
 .category-tile-meta {
-  margin: 3px 0 0;
-  font-size: clamp(11px, 2.6vw, 13px);
+  margin: 2px 0 0;
+  font-size: clamp(10px, 2.3vw, 12px);
   color: var(--muted);
   line-height: 1.3;
 }
@@ -158,20 +192,22 @@ h1 {
 .tracker-chip-grid {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
-  grid-auto-rows: minmax(44px, 1fr);
-  gap: clamp(6px, 1.5vw, 10px);
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: clamp(5px, 1.2vw, 8px);
   align-content: start;
 }
 
 .tracker-chip {
   position: relative;
-  border-radius: 14px;
+  aspect-ratio: 1;
+  width: 100%;
+  border-radius: 10px;
   border: 1px solid color-mix(in srgb, var(--chip-color) 45%, var(--line));
   background: color-mix(in srgb, var(--chip-color) 14%, var(--card));
-  display: grid;
-  place-items: center;
-  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
   transition: transform 0.1s ease, border-color 0.1s ease;
 }
 
@@ -184,9 +220,17 @@ h1 {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chip-color) 35%, transparent);
 }
 
-.tracker-chip-icon {
-  font-size: clamp(18px, 4vw, 24px);
-  line-height: 1;
+.tracker-chip-label {
+  font-size: clamp(9px, 2.2vw, 11px);
+  line-height: 1.15;
+  font-weight: 650;
+  text-align: center;
+  color: var(--text);
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .tracker-chip-badge {
@@ -704,20 +748,37 @@ textarea { min-height: 90px; resize: vertical; }
   background: color-mix(in srgb, var(--accent) 14%, var(--card));
 }
 
-.day-nav {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+.today-bar {
+  display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 6px;
+  margin-bottom: 6px;
 }
 
-.day-nav-label {
-  margin: 0;
+.today-bar-mid {
+  flex: 1;
+  min-width: 0;
   text-align: center;
-  font-size: 14px;
+  line-height: 1.2;
+}
+
+.today-bar-date {
+  margin: 0;
+  font-size: 13px;
   font-weight: 650;
-  letter-spacing: -0.02em;
+}
+
+.today-bar-meta {
+  margin: 1px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.btn-sm {
+  padding: 7px 10px;
+  font-size: 12px;
+  border-radius: 11px;
+  flex-shrink: 0;
 }
 
 .heat {
