@@ -37,6 +37,8 @@ const state = {
   loading: false,
 };
 
+const APP_VERSION = "1.0.3";
+
 const CATEGORY_FOCUS_MARGIN = 28;
 const PREVIEW_CHIP_MIN = 56;
 const PREVIEW_CHIP_GAP = 6;
@@ -318,20 +320,23 @@ async function refresh(rangeDays = 400) {
   }
 }
 
+function setAppHeading(label) {
+  pageTitle.innerHTML = `${escapeHtml(label)} <span class="app-version">v${APP_VERSION}</span>`;
+}
+
 function render() {
   const titles = {
-    today: isSelectedToday() ? "Vandaag" : "Logboek",
     calendar: "Kalender",
     stats: "Statistieken",
     trackers: "Trackers",
   };
   document.body.classList.toggle("view-today", state.view === "today");
   if (state.view === "today") {
-    todayLabel.textContent = formatDayShort(selectedDayDate());
-    pageTitle.textContent = titles.today;
+    todayLabel.textContent = "";
+    setAppHeading("Vandaag");
   } else {
     todayLabel.textContent = formatDayTitle(new Date());
-    pageTitle.textContent = titles[state.view] || "Tracknote";
+    setAppHeading(titles[state.view] || "Tracknote");
   }
   if (state.loading && !state.trackers.length) {
     appEl.innerHTML = `<p class="empty">Laden…</p>`;
@@ -451,8 +456,30 @@ function applyFocusPanelRect(panel, rect) {
   panel.style.height = `${rect.height}px`;
 }
 
-function previewGridColumns(frameWidth) {
-  return Math.max(1, Math.floor((frameWidth + PREVIEW_CHIP_GAP) / (PREVIEW_CHIP_MIN + PREVIEW_CHIP_GAP)));
+function measureGridColumns(grid) {
+  const chips = grid.querySelectorAll(".tracker-chip");
+  if (!chips.length) return 1;
+  const xs = new Set();
+  chips.forEach((chip) => xs.add(Math.round(chip.offsetLeft)));
+  return Math.max(1, xs.size);
+}
+
+function capturePreviewGridMetrics(tile) {
+  const grid = tile.querySelector(".tracker-chip-grid");
+  const frame = tile.querySelector(".category-tile-frame");
+  const chip = grid?.querySelector(".tracker-chip");
+  if (!grid || !frame || !chip) return null;
+
+  const gap = parseFloat(getComputedStyle(grid).columnGap) || PREVIEW_CHIP_GAP;
+  const previewCell = chip.getBoundingClientRect().width;
+
+  return {
+    frameW: frame.clientWidth,
+    frameH: frame.clientHeight,
+    cols: measureGridColumns(grid),
+    gap,
+    previewCell: previewCell || PREVIEW_CHIP_MIN,
+  };
 }
 
 function applyFocusTrackerScale(panel) {
@@ -464,19 +491,28 @@ function applyFocusTrackerScale(panel) {
   const count = grid.querySelectorAll(".tracker-chip").length;
   if (!count) return;
 
-  const cols = previewGridColumns(metrics.frameW);
+  const cols = metrics.cols || 1;
   const rows = Math.ceil(count / cols);
+  const gap = metrics.gap ?? PREVIEW_CHIP_GAP;
   const padX = parseFloat(getComputedStyle(frame).paddingLeft) + parseFloat(getComputedStyle(frame).paddingRight);
   const padY = parseFloat(getComputedStyle(frame).paddingTop) + parseFloat(getComputedStyle(frame).paddingBottom);
   const innerW = Math.max(0, frame.clientWidth - padX);
   const innerH = Math.max(0, frame.clientHeight - padY);
 
-  const cellW = (innerW - PREVIEW_CHIP_GAP * (cols - 1)) / cols;
-  const cellH = (innerH - PREVIEW_CHIP_GAP * (rows - 1)) / rows;
-  const cell = Math.max(PREVIEW_CHIP_MIN, Math.min(cellW, cellH));
+  const scale = Math.min(innerW / metrics.frameW, innerH / metrics.frameH);
+  let cell = metrics.previewCell * scale;
 
-  grid.style.setProperty("--focus-cols", String(cols));
-  grid.style.setProperty("--focus-gap", `${PREVIEW_CHIP_GAP}px`);
+  const maxCellW = (innerW - gap * (cols - 1)) / cols;
+  const maxCellH = (innerH - gap * (rows - 1)) / rows;
+  cell = Math.min(cell, maxCellW, maxCellH);
+
+  grid.style.display = "grid";
+  grid.style.gridTemplateColumns = `repeat(${cols}, ${cell}px)`;
+  grid.style.gridAutoRows = `${cell}px`;
+  grid.style.gap = `${gap}px`;
+  grid.style.alignContent = "center";
+  grid.style.justifyContent = "center";
+
   grid.style.setProperty("--focus-cell", `${cell}px`);
   grid.style.setProperty("--chip-font", `${Math.max(10, Math.min(cell * 0.19, 22))}px`);
   grid.style.setProperty("--chip-radius", `${Math.max(8, cell * 0.18)}px`);
@@ -578,12 +614,14 @@ function expandCategory(categoryId) {
   }
   const tile = appEl.querySelector(`[data-category-id="${categoryId}"]`);
   if (!tile || tile.classList.contains("is-source-hidden")) return;
-  const frame = tile.querySelector(".category-tile-frame");
   const rect = tile.getBoundingClientRect();
   state.expandedCategoryId = categoryId;
-  state.categoryExpandMetrics = {
-    frameW: frame?.clientWidth || rect.width,
-    frameH: frame?.clientHeight || rect.height * 0.65,
+  state.categoryExpandMetrics = capturePreviewGridMetrics(tile) || {
+    frameW: rect.width,
+    frameH: rect.height * 0.65,
+    cols: 2,
+    gap: PREVIEW_CHIP_GAP,
+    previewCell: PREVIEW_CHIP_MIN,
   };
   state.categoryExpandRect = {
     top: rect.top,
