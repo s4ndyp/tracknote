@@ -1,1 +1,56 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0d12" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="description" content="Dagelijks tracken van hoofdpijn, eten, medicijnen en meer" />
+  <title>Tracknote</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow" id="todayLabel">Vandaag</p>
+      <h1 id="pageTitle">Tracknote</h1>
+    </div>
+    <button class="icon-btn" id="refreshBtn" type="button" aria-label="Vernieuwen">↻</button>
+  </header>
 
+  <main id="app" class="app"></main>
+
+  <nav class="tabbar" aria-label="Hoofdmenu">
+    <button class="tab is-active" data-view="today" type="button">
+      <span class="tab-icon">▣</span>
+      <span>Vandaag</span>
+    </button>
+    <button class="tab" data-view="calendar" type="button">
+      <span class="tab-icon">▦</span>
+      <span>Kalender</span>
+    </button>
+    <button class="tab" data-view="stats" type="button">
+      <span class="tab-icon">◔</span>
+      <span>Stats</span>
+    </button>
+    <button class="tab" data-view="trackers" type="button">
+      <span class="tab-icon">✎</span>
+      <span>Trackers</span>
+    </button>
+  </nav>
+
+  <div class="sheet" id="sheet" hidden>
+    <div class="sheet-backdrop" data-close="sheet"></div>
+    <div class="sheet-panel" role="dialog" aria-modal="true">
+      <div class="sheet-handle"></div>
+      <div class="sheet-body" id="sheetBody"></div>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

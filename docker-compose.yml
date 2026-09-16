@@ -1,0 +1,17 @@
+# Dockhand / productie: alleen de image uit GHCR pullen (geen build-context nodig).
+# Registry in Dockhand: ghcr.io + GitHub-gebruikersnaam + PAT met read:packages,
+# of maak het package public op github.com/users/s4ndyp/packages
+
+services:
+  app:
+    image: ghcr.io/s4ndyp/tracknote:latest
+    pull_policy: always
+    container_name: tracknote
+    restart: unless-stopped
+    ports:
+      - "8095:8090"
+    volumes:
+      - tracknote_data:/app/pb_data
+
+volumes:
+  tracknote_data:
