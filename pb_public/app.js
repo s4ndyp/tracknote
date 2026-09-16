@@ -31,7 +31,6 @@ const state = {
   calendarFilterTrackerId: null,
   statsRange: "month",
   selectedDay: localISODate(new Date()),
-  selectedCategoryId: null,
   loading: false,
 };
 
@@ -248,17 +247,27 @@ function summaryFor(tracker, date = new Date()) {
 
 function closeSheet() {
   sheetEl.hidden = true;
+  sheetEl.classList.remove("is-modal");
   sheetBody.innerHTML = "";
 }
 
 function openSheet(html) {
+  sheetEl.classList.remove("is-modal");
+  sheetBody.innerHTML = html;
+  sheetEl.hidden = false;
+}
+
+function openLogModal(html) {
+  sheetEl.classList.add("is-modal");
   sheetBody.innerHTML = html;
   sheetEl.hidden = false;
 }
 
 function setView(view) {
   state.view = view;
-  if (view !== "today") state.selectedCategoryId = null;
+  if (view === "today") {
+    state.selectedDay = localISODate(new Date());
+  }
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.classList.toggle("is-active", tab.dataset.view === view);
   });
@@ -291,9 +300,7 @@ function render() {
   };
   if (state.view === "today") {
     todayLabel.textContent = formatDayTitle(selectedDayDate());
-    const cat = state.selectedCategoryId ? categoryById(state.selectedCategoryId) : null;
-    if (cat) pageTitle.textContent = cat.name;
-    else pageTitle.textContent = titles.today;
+    pageTitle.textContent = titles.today;
   } else {
     todayLabel.textContent = formatDayTitle(new Date());
     pageTitle.textContent = titles[state.view] || "Tracknote";
@@ -318,21 +325,63 @@ function dayNavHtml(day) {
   `;
 }
 
-function categoryTile(category) {
+function categoryStatusText(categoryId, day) {
+  const trackers = trackersInCategory(categoryId);
+  if (!trackers.length) return "Geen trackers";
+  const filled = trackers.filter((t) => entriesForTracker(t.id, day).length > 0).length;
+  const logs = categoryDayLogCount(categoryId, day);
+  if (filled === trackers.length) return `Alles ingevuld · ${logs} log${logs === 1 ? "" : "s"}`;
+  if (filled === 0) return isSelectedToday() ? "Nog niets vandaag" : "Nog niets";
+  return `${filled}/${trackers.length} ingevuld · ${logs} log${logs === 1 ? "" : "s"}`;
+}
+
+function trackerChipMeta(tracker, day) {
+  const items = entriesForTracker(tracker.id, day);
+  if (!items.length) return { active: false, badge: "" };
+  if (tracker.type === "counter") {
+    const total = items.reduce((sum, e) => sum + Number(e.value_number || 1), 0);
+    return { active: true, badge: String(total) };
+  }
+  if (tracker.type === "check") return { active: true, badge: "✓" };
+  return { active: true, badge: "•" };
+}
+
+function categoryTrackerChip(tracker) {
   const day = selectedDayDate();
-  const trackerCount = trackersInCategory(category.id).length;
-  const logs = categoryDayLogCount(category.id, day);
+  const meta = trackerChipMeta(tracker, day);
+  const title = `${tracker.name}: ${summaryFor(tracker, day)}`;
   return `
     <button
       type="button"
-      class="category-tile"
-      data-open-category="${category.id}"
-      style="--tile-color:${escapeHtml(category.color)}"
+      class="tracker-chip ${meta.active ? "is-active" : ""}"
+      data-open-tracker="${tracker.id}"
+      title="${escapeHtml(title)}"
+      aria-label="${escapeHtml(title)}"
+      style="--chip-color:${escapeHtml(tracker.color)}"
     >
-      <span class="category-tile-icon">${escapeHtml(category.icon || "▣")}</span>
-      <span class="category-tile-name">${escapeHtml(category.name)}</span>
-      <span class="category-tile-meta">${trackerCount} tracker${trackerCount === 1 ? "" : "s"} · ${logs} log${logs === 1 ? "" : "s"}</span>
+      <span class="tracker-chip-icon">${escapeHtml(tracker.icon || "●")}</span>
+      ${meta.badge ? `<span class="tracker-chip-badge">${escapeHtml(meta.badge)}</span>` : ""}
     </button>
+  `;
+}
+
+function categoryTile(category) {
+  const day = selectedDayDate();
+  const trackers = trackersInCategory(category.id);
+  return `
+    <article class="category-tile" style="--tile-color:${escapeHtml(category.color)}">
+      <header class="category-tile-head">
+        <h3 class="category-tile-name">${escapeHtml(category.name)}</h3>
+        <p class="category-tile-meta">${escapeHtml(categoryStatusText(category.id, day))}</p>
+      </header>
+      <div class="category-tile-frame">
+        <div class="tracker-chip-grid">
+          ${trackers.length
+            ? trackers.map(categoryTrackerChip).join("")
+            : `<p class="category-tile-empty">Geen trackers</p>`}
+        </div>
+      </div>
+    </article>
   `;
 }
 
@@ -340,60 +389,21 @@ function renderToday() {
   const day = selectedDayDate();
   const dayItems = entriesForDay(day);
   const dayLabel = isSelectedToday() ? "vandaag" : "op deze dag";
-
-  if (!state.selectedCategoryId) {
-    const cats = [...state.categories].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-    const { cols, rows } = categoryGridLayout(Math.max(cats.length, 1));
-    appEl.classList.add("app--tiles");
-    appEl.innerHTML = `
-      ${dayNavHtml(day)}
-      <div class="toolbar toolbar-compact">
-        <p class="hint">${dayItems.length} log${dayItems.length === 1 ? "" : "s"} ${dayLabel}</p>
-        <button class="btn btn-ghost" data-action="open-log" type="button">Logs</button>
-      </div>
-      <div
-        class="category-stage"
-        style="grid-template-columns:repeat(${cols},minmax(0,1fr));grid-template-rows:repeat(${rows},minmax(0,1fr))"
-      >
-        ${cats.length ? cats.map(categoryTile).join("") : `<p class="empty">Nog geen categorieën. Voeg ze toe onder Trackers.</p>`}
-      </div>
-    `;
-    return;
-  }
-
-  appEl.classList.remove("app--tiles");
-  const trackers = trackersInCategory(state.selectedCategoryId);
-  const catLogs = categoryDayLogCount(state.selectedCategoryId, day);
+  const cats = [...state.categories].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  const { cols, rows } = categoryGridLayout(Math.max(cats.length, 1));
+  appEl.classList.add("app--tiles");
   appEl.innerHTML = `
     ${dayNavHtml(day)}
-    <div class="toolbar">
-      <button class="btn btn-ghost" data-action="category-back" type="button">← Terug</button>
-      <p class="hint">${catLogs} log${catLogs === 1 ? "" : "s"} ${dayLabel}</p>
+    <div class="toolbar toolbar-compact">
+      <p class="hint">${dayItems.length} log${dayItems.length === 1 ? "" : "s"} ${dayLabel}</p>
       <button class="btn btn-ghost" data-action="open-log" type="button">Logs</button>
     </div>
-    <div class="grid tracker-grid">
-      ${trackers.map(trackerCard).join("") || `<p class="empty">Geen trackers in deze categorie.</p>`}
+    <div
+      class="category-stage"
+      style="grid-template-columns:repeat(${cols},minmax(0,1fr));grid-template-rows:repeat(${rows},minmax(0,1fr))"
+    >
+      ${cats.length ? cats.map(categoryTile).join("") : `<p class="empty">Nog geen categorieën. Voeg ze toe onder Trackers.</p>`}
     </div>
-  `;
-}
-
-function trackerCard(tracker) {
-  const day = selectedDayDate();
-  const value = summaryFor(tracker, day);
-  const action = tracker.type === "counter"
-    ? `<button class="plus" data-quick="counter" data-id="${tracker.id}" type="button">+</button>`
-    : tracker.type === "check"
-      ? `<span class="pill" style="color:${tracker.color}">${entriesForTracker(tracker.id, day).length ? "✓" : "○"}</span>`
-      : `<span class="pill">${escapeHtml(String(value).slice(0, 10))}</span>`;
-  return `
-    <article class="card tracker-card" data-open-tracker="${tracker.id}">
-      <div class="swatch" style="background:${tracker.color}">${escapeHtml(tracker.icon || "●")}</div>
-      <div class="meta">
-        <h3>${escapeHtml(tracker.name)}</h3>
-        <p>${escapeHtml(value)}</p>
-      </div>
-      ${action}
-    </article>
   `;
 }
 
@@ -726,15 +736,25 @@ function logForm(tracker, entry = null, date = new Date()) {
     body = `<p class="hint">Dit vinkt het item aan voor het gekozen moment.</p><input id="f-number" type="hidden" value="1" />`;
   }
   return `
-    <h2 style="margin:0 0 8px">${escapeHtml(tracker.icon || "")} ${escapeHtml(tracker.name)}</h2>
-    <p class="hint">${escapeHtml(tracker.description || TYPE_LABELS[tracker.type])}</p>
-    ${body}
-    <label>Notitie</label>
-    <input id="f-note" value="${escapeHtml(entry?.note || "")}" />
-    <label>Moment</label>
-    <input id="f-when" type="datetime-local" value="${stamp}" />
-    <div class="actions">
-      ${entry ? `<button class="btn btn-danger" data-delete-entry="${entry.id}" type="button">Verwijderen</button>` : `<button class="btn btn-ghost" data-close="sheet" type="button">Annuleren</button>`}
+    <div class="log-modal-head">
+      <div class="swatch log-modal-swatch" style="background:${escapeHtml(tracker.color)}">${escapeHtml(tracker.icon || "●")}</div>
+      <div class="log-modal-titles">
+        <h2 class="log-modal-title">${escapeHtml(tracker.name)}</h2>
+        <p class="hint">${escapeHtml(tracker.description || TYPE_LABELS[tracker.type])}</p>
+      </div>
+      <button class="icon-btn log-modal-close" data-close="sheet" type="button" aria-label="Sluiten">×</button>
+    </div>
+    <div class="log-modal-body">
+      ${body}
+      <label class="log-modal-label">Notitie <span class="optional">(optioneel)</span></label>
+      <input id="f-note" value="${escapeHtml(entry?.note || "")}" placeholder="Korte notitie" />
+      <details class="log-modal-when">
+        <summary>Moment aanpassen</summary>
+        <input id="f-when" type="datetime-local" value="${stamp}" />
+      </details>
+    </div>
+    <div class="log-modal-actions">
+      ${entry ? `<button class="btn btn-danger" data-delete-entry="${entry.id}" type="button">Verwijderen</button>` : ""}
       <button class="btn btn-primary" data-save-entry="${entry?.id || "new"}" data-tracker="${tracker.id}" type="button">Opslaan</button>
     </div>
   `;
@@ -906,13 +926,8 @@ async function quickCheck(tracker) {
 }
 
 appEl.addEventListener("click", async (event) => {
-  const t = event.target.closest("[data-open-tracker],[data-open-category],[data-quick],[data-action],[data-cal-range],[data-cal-filter],[data-stats-range],[data-day],[data-edit-tracker],[data-edit-category]");
+  const t = event.target.closest("[data-open-tracker],[data-quick],[data-action],[data-cal-range],[data-cal-filter],[data-stats-range],[data-day],[data-edit-tracker],[data-edit-category]");
   if (!t) return;
-  if (t.dataset.openCategory) {
-    state.selectedCategoryId = t.dataset.openCategory;
-    render();
-    return;
-  }
   if (t.dataset.quick === "counter") {
     event.stopPropagation();
     const tracker = trackerById(t.dataset.id);
@@ -929,7 +944,7 @@ appEl.addEventListener("click", async (event) => {
       await quickCounter(tracker);
       return;
     }
-    openSheet(logForm(tracker, null, logTimestampForSelectedDay()));
+    openLogModal(logForm(tracker, null, logTimestampForSelectedDay()));
     return;
   }
   if (t.dataset.editTracker) {
@@ -942,10 +957,6 @@ appEl.addEventListener("click", async (event) => {
   }
   if (t.dataset.action === "new-category") openSheet(categoryForm());
   if (t.dataset.action === "new-tracker") openSheet(trackerForm());
-  if (t.dataset.action === "category-back") {
-    state.selectedCategoryId = null;
-    render();
-  }
   if (t.dataset.action === "open-log") openSheet(todayLogSheet());
   if (t.dataset.action === "day-prev") {
     state.selectedDay = localISODate(addDays(selectedDayDate(), -1));
@@ -1026,7 +1037,7 @@ sheetEl.addEventListener("click", async (event) => {
     if (t.dataset.editEntry) {
       const entry = state.entries.find((e) => e.id === t.dataset.editEntry);
       const tracker = trackerById(entry.tracker);
-      openSheet(logForm(tracker, entry));
+      openLogModal(logForm(tracker, entry));
     }
     if (t.dataset.addOnDay) openSheet(pickTrackerSheet(t.dataset.addOnDay));
     if (t.dataset.logTracker) {
@@ -1046,7 +1057,7 @@ sheetEl.addEventListener("click", async (event) => {
         await refresh();
         return;
       }
-      openSheet(logForm(tracker, null, date));
+      openLogModal(logForm(tracker, null, date));
     }
   } catch (err) {
     toast(err.message);
