@@ -37,11 +37,13 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.3";
+const APP_VERSION = "1.0.4";
 
 const CATEGORY_FOCUS_MARGIN = 28;
 const PREVIEW_CHIP_MIN = 56;
 const PREVIEW_CHIP_GAP = 6;
+
+let focusFrameResizeObserver = null;
 
 const appEl = document.getElementById("app");
 const sheetEl = document.getElementById("sheet");
@@ -526,6 +528,43 @@ function scheduleFocusTrackerScale(panel) {
   });
 }
 
+function disconnectFocusScaleObserver() {
+  focusFrameResizeObserver?.disconnect();
+  focusFrameResizeObserver = null;
+}
+
+function bindFocusScaleObserver(panel) {
+  disconnectFocusScaleObserver();
+  const frame = panel.querySelector(".category-tile-frame");
+  if (!frame || typeof ResizeObserver === "undefined") return;
+
+  focusFrameResizeObserver = new ResizeObserver(() => {
+    applyFocusTrackerScale(panel);
+  });
+  focusFrameResizeObserver.observe(frame);
+}
+
+function afterPanelExpandAnimation(panel, callback) {
+  const props = ["width", "height", "top", "left"];
+  let done = false;
+  let settleTimer;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    panel.removeEventListener("transitionend", onEnd);
+    clearTimeout(settleTimer);
+    clearTimeout(fallback);
+    callback();
+  };
+  const onEnd = (event) => {
+    if (!props.includes(event.propertyName)) return;
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(finish, 36);
+  };
+  const fallback = setTimeout(finish, 460);
+  panel.addEventListener("transitionend", onEnd);
+}
+
 function syncCategoryFocusPanel({ animate = false } = {}) {
   const category = categoryById(state.expandedCategoryId);
   const panel = document.getElementById("categoryFocusPanel");
@@ -545,11 +584,14 @@ function syncCategoryFocusPanel({ animate = false } = {}) {
   if (animate && state.categoryExpandRect) {
     applyFocusPanelRect(panel, state.categoryExpandRect);
     panel.classList.remove("is-expanded");
+    bindFocusScaleObserver(panel);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         applyFocusPanelRect(panel, computeExpandedFocusRect());
         panel.classList.add("is-expanded");
-        scheduleFocusTrackerScale(panel);
+        afterPanelExpandAnimation(panel, () => {
+          applyFocusTrackerScale(panel);
+        });
       });
     });
     return;
@@ -557,6 +599,7 @@ function syncCategoryFocusPanel({ animate = false } = {}) {
 
   applyFocusPanelRect(panel, computeExpandedFocusRect());
   panel.classList.add("is-expanded");
+  bindFocusScaleObserver(panel);
   scheduleFocusTrackerScale(panel);
 }
 
@@ -564,6 +607,7 @@ function collapseCategoryPanel(animated = true) {
   const panel = document.getElementById("categoryFocusPanel");
   const layer = document.getElementById("categoryFocusLayer");
   if (!panel || !layer || !state.expandedCategoryId) {
+    disconnectFocusScaleObserver();
     state.expandedCategoryId = null;
     state.categoryExpandRect = null;
     state.categoryExpandMetrics = null;
@@ -572,6 +616,7 @@ function collapseCategoryPanel(animated = true) {
   }
 
   const finish = () => {
+    disconnectFocusScaleObserver();
     state.expandedCategoryId = null;
     state.categoryExpandRect = null;
     state.categoryExpandMetrics = null;
