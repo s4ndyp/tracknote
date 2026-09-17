@@ -298,11 +298,14 @@ function openLogModal(html) {
 
 function setView(view) {
   state.view = view;
+  state.expandedCategoryId = null;
+  state.categoryExpandRect = null;
+  state.categoryExpandMetrics = null;
+  if (view !== "today") {
+    disconnectFocusScaleObserver();
+  }
   if (view === "today") {
     state.selectedDay = localISODate(new Date());
-    state.expandedCategoryId = null;
-    state.categoryExpandRect = null;
-    state.categoryExpandMetrics = null;
   }
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.classList.toggle("is-active", tab.dataset.view === view);
@@ -420,7 +423,7 @@ function trackerChipHtml(tracker, {
   const meta = showDayState
     ? trackerChipMeta(tracker, dayDate)
     : { filled: false, active: false, badge: "", locked: false };
-  const title = `${tracker.name}: ${summaryFor(tracker, day)}`;
+  const title = `${tracker.name}: ${summaryFor(tracker, dayDate)}`;
   const locked = interactive && meta.locked;
   const classes = [
     "tracker-chip",
