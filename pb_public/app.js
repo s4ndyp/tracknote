@@ -37,7 +37,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.8";
+const APP_VERSION = "1.0.9";
 
 const CATEGORY_FOCUS_MARGIN = 28;
 const PREVIEW_CHIP_MIN = 56;
@@ -812,7 +812,8 @@ function renderCalendar() {
         </button>
       `).join("")}
     </div>
-    ${state.calendarFilterTrackerId ? `<p class="hint cal-filter-hint">Waarde per dag in de cel · tik op een dag voor alle details</p>` : ""}
+    ${state.calendarFilterTrackerId ? calendarChoiceLegendHtml(trackerById(state.calendarFilterTrackerId)) : ""}
+    ${state.calendarFilterTrackerId ? calendarFilterHintHtml(trackerById(state.calendarFilterTrackerId)) : ""}
     <div class="mini-months ${range === "year" ? "year" : ""}">
       ${list.map(({ year, month }) => calendarMonth(year, month, range === "month")).join("")}
     </div>
@@ -838,6 +839,57 @@ function dotsForDay(date) {
   return [...groups.values()].slice(0, 8).map((color) => `<i class="dot" style="background:${color}"></i>`).join("");
 }
 
+function trackerPaletteOffset(id) {
+  let hash = 0;
+  const text = String(id || "");
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash + text.charCodeAt(i) * 17) % COLORS.length;
+  }
+  return hash;
+}
+
+function choiceColorsForTracker(tracker) {
+  const choices = optionsOf(tracker).choices || [];
+  const offset = trackerPaletteOffset(tracker?.id);
+  const map = new Map();
+  choices.forEach((label, index) => {
+    map.set(label, COLORS[(offset + index) % COLORS.length]);
+  });
+  return map;
+}
+
+function colorForChoiceValue(tracker, valueText) {
+  const map = choiceColorsForTracker(tracker);
+  const key = String(valueText ?? "").trim();
+  if (map.has(key)) return map.get(key);
+  return tracker?.color || "#64748b";
+}
+
+function calendarChoiceLegendHtml(tracker) {
+  if (!tracker || tracker.type !== "choice") return "";
+  const choices = optionsOf(tracker).choices || [];
+  if (!choices.length) return "";
+  const colors = choiceColorsForTracker(tracker);
+  return `
+    <div class="cal-choice-legend" role="list" aria-label="Legenda keuzes">
+      ${choices.map((label) => `
+        <span class="cal-legend-item" role="listitem">
+          <i class="dot" style="background:${escapeHtml(colors.get(label))}"></i>
+          <span>${escapeHtml(label)}</span>
+        </span>
+      `).join("")}
+    </div>
+  `;
+}
+
+function calendarFilterHintHtml(tracker) {
+  if (!tracker) return "";
+  if (tracker.type === "choice") {
+    return `<p class="hint cal-filter-hint">Kleur in de cel = keuze die dag · tik op een dag voor details</p>`;
+  }
+  return `<p class="hint cal-filter-hint">Waarde per dag in de cel · tik op een dag voor alle details</p>`;
+}
+
 function truncateCalendarLabel(text, max) {
   const value = String(text ?? "").trim();
   if (value.length <= max) return value;
@@ -860,7 +912,7 @@ function calendarValueLabel(tracker, items, { mini = false } = {}) {
     if (mini || !tracker.unit) return String(num);
     return `${num} ${truncateCalendarLabel(tracker.unit, 6)}`;
   }
-  if (tracker.type === "choice" || tracker.type === "text") {
+  if (tracker.type === "text") {
     const joined = items.map((e) => e.value_text).filter(Boolean).join(mini ? "+" : " · ");
     return truncateCalendarLabel(joined || `${items.length}×`, textMax);
   }
@@ -877,8 +929,16 @@ function calendarDayMark(date, mini) {
   if (!items.length || !tracker) {
     return `<span class="day-mark day-mark--empty" aria-hidden="true"></span>`;
   }
-  const label = calendarValueLabel(tracker, items, { mini });
   const full = summaryFor(tracker, date);
+  if (tracker.type === "choice") {
+    const dots = items.slice(0, 8).map((entry) => {
+      const color = colorForChoiceValue(tracker, entry.value_text);
+      const label = entry.value_text || "—";
+      return `<i class="dot" title="${escapeHtml(label)}" style="background:${escapeHtml(color)}"></i>`;
+    }).join("");
+    return `<span class="dots" title="${escapeHtml(full)}">${dots}</span>`;
+  }
+  const label = calendarValueLabel(tracker, items, { mini });
   const color = tracker.color || "#64748b";
   return `
     <span class="day-mark" title="${escapeHtml(full)}">
@@ -891,12 +951,14 @@ function calendarMonth(year, month, large) {
   const days = monthMatrix(year, month);
   const title = new Date(year, month, 1).toLocaleDateString("nl-NL", { month: "long", year: "numeric" });
   const today = localISODate(new Date());
-  const filtered = Boolean(state.calendarFilterTrackerId);
+  const filterTracker = state.calendarFilterTrackerId ? trackerById(state.calendarFilterTrackerId) : null;
+  const filtered = Boolean(filterTracker);
+  const choiceMode = filterTracker?.type === "choice";
   const mini = !large;
   return `
-    <section class="card ${large ? "" : "mini-cal"} ${filtered ? "cal-filtered" : ""}">
+    <section class="card ${large ? "" : "mini-cal"} ${filtered ? (choiceMode ? "cal-filtered cal-filtered--choice" : "cal-filtered") : ""}">
       <h3 style="margin:0 0 10px">${title}</h3>
-      <div class="calendar ${filtered ? "calendar--filtered" : ""}">
+      <div class="calendar ${filtered && !choiceMode ? "calendar--filtered" : ""} ${choiceMode ? "calendar--choice-dots" : ""}">
         ${DOW.map((d) => `<div class="dow">${d}</div>`).join("")}
         ${days.map((day) => {
           const inMonth = day.getMonth() === month;
@@ -906,7 +968,7 @@ function calendarMonth(year, month, large) {
             ? `${key}: ${summaryFor(trackerById(state.calendarFilterTrackerId), day)}`
             : key;
           return `
-            <button class="day ${inMonth ? "" : "is-muted"} ${key === today ? "is-today" : ""} ${filtered && items.length ? "has-value" : ""}" data-day="${key}" type="button" title="${escapeHtml(dayTitle)}">
+            <button class="day ${inMonth ? "" : "is-muted"} ${key === today ? "is-today" : ""} ${filtered && items.length && !choiceMode ? "has-value" : ""}" data-day="${key}" type="button" title="${escapeHtml(dayTitle)}">
               <span class="day-num">${day.getDate()}</span>
               ${calendarDayMark(day, mini)}
             </button>
