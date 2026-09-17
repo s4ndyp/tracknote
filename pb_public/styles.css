@@ -468,6 +468,8 @@ body.view-today .app.app--tiles {
 .tracker-chip--admin,
 .tracker-chip--pick {
   width: 100%;
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .tracker-admin-meta {

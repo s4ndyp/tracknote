@@ -425,12 +425,13 @@ function trackerChipHtml(tracker, {
     : { filled: false, active: false, badge: "", locked: false };
   const title = `${tracker.name}: ${summaryFor(tracker, dayDate)}`;
   const locked = interactive && meta.locked;
+  const isActionChip = interactive || editTrackerId || logTrackerId;
   const classes = [
     "tracker-chip",
     meta.active ? "is-active" : "",
     meta.filled ? "is-filled" : "",
     locked ? "is-locked" : "",
-    interactive ? "" : "tracker-chip--preview",
+    isActionChip ? "" : "tracker-chip--preview",
     tracker.archived ? "is-archived" : "",
     extraClass,
   ].filter(Boolean).join(" ");
