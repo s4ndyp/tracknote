@@ -304,9 +304,11 @@ body.view-today .app.app--tiles {
 .tracker-chip-grid {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(56px, 56px));
   gap: clamp(5px, 1.2vw, 8px);
-  align-content: start;
+  align-content: center;
+  justify-content: center;
+  place-content: center;
 }
 
 .tracker-chip {
@@ -346,12 +348,12 @@ body.view-today .app.app--tiles {
   max-width: none;
   aspect-ratio: 1;
   border-radius: var(--chip-radius, 10px);
-  padding: calc(var(--focus-cell, 64px) * 0.07);
+  padding: var(--chip-pad, 4px);
 }
 
 .tracker-chip-grid.tracker-chip-grid--focus > .tracker-chip .tracker-chip-label {
   font-size: var(--chip-font, 11px);
-  -webkit-line-clamp: 5;
+  -webkit-line-clamp: 4;
 }
 
 .tracker-chip-grid.tracker-chip-grid--focus > .tracker-chip .tracker-chip-badge {
