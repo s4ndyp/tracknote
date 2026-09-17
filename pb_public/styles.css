@@ -961,6 +961,45 @@ textarea { min-height: 90px; resize: vertical; }
   font-size: 11px;
 }
 
+.cal-choice-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+
+.cal-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.cal-filtered--choice .day,
+.mini-cal.cal-filtered--choice .day {
+  min-height: 28px;
+}
+
+.cal-filtered--choice:not(.mini-cal) .day {
+  min-height: 64px;
+}
+
+.calendar--choice-dots .day-mark {
+  align-items: center;
+  justify-content: center;
+}
+
+.calendar--choice-dots .dots,
+.mini-cal.cal-filtered--choice .dots {
+  justify-content: center;
+  width: 100%;
+}
+
 .mini-months {
   display: grid;
   gap: 16px;
