@@ -37,7 +37,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.9";
+const APP_VERSION = "1.0.10";
 
 const CATEGORY_FOCUS_MARGIN = 28;
 const PREVIEW_CHIP_MIN = 56;
@@ -1000,38 +1000,28 @@ function renderStats() {
     if (!byTracker.has(entry.tracker)) byTracker.set(entry.tracker, []);
     byTracker.get(entry.tracker).push(entry);
   });
-  const days = [];
-  for (let d = new Date(from); d <= to; d = addDays(d, 1)) days.push(new Date(d));
-  const maxDay = Math.max(1, ...days.map((d) => entriesForDay(d).length));
-
   appEl.innerHTML = `
-    <div class="segment">
-      <button data-stats-range="week" class="${state.statsRange === "week" ? "is-active" : ""}" type="button">7 dagen</button>
-      <button data-stats-range="month" class="${state.statsRange === "month" ? "is-active" : ""}" type="button">Deze maand</button>
-      <button data-stats-range="6m" class="${state.statsRange === "6m" ? "is-active" : ""}" type="button">6 maanden</button>
-      <button data-stats-range="year" class="${state.statsRange === "year" ? "is-active" : ""}" type="button">Jaar</button>
-    </div>
-    <div class="grid stats-grid" style="margin-top:14px">
-      <section class="card">
-        <p class="hint">Logs in periode</p>
-        <p class="stat-value">${entries.length}</p>
-      </section>
-      <section class="card">
-        <p class="hint">Actieve dagen</p>
-        <p class="stat-value">${new Set(entries.map((e) => localISODate(parsePbDate(e.logged_at)))).size}</p>
-      </section>
-    </div>
-    <section class="card" style="margin-top:12px">
-      <h3 style="margin:0 0 10px">Activiteit</h3>
-      <div class="heat">
-        ${days.map((day) => {
-          const count = entriesForDay(day).length;
-          const alpha = count ? 0.25 + (count / maxDay) * 0.75 : 0.12;
-          return `<i title="${localISODate(day)} · ${count}" style="background:rgba(124,156,255,${alpha})"></i>`;
-        }).join("")}
+    <div class="period-toolbar">
+      <div class="segment">
+        <button data-stats-range="week" class="${state.statsRange === "week" ? "is-active" : ""}" type="button">7 dagen</button>
+        <button data-stats-range="month" class="${state.statsRange === "month" ? "is-active" : ""}" type="button">Deze maand</button>
+        <button data-stats-range="6m" class="${state.statsRange === "6m" ? "is-active" : ""}" type="button">6 maanden</button>
+        <button data-stats-range="year" class="${state.statsRange === "year" ? "is-active" : ""}" type="button">Jaar</button>
       </div>
-    </section>
-    ${state.trackers.filter((t) => !t.archived).map((tracker) => trackerStats(tracker, byTracker.get(tracker.id) || [])).join("")}
+    </div>
+    <div class="view-body view-body--stats">
+      <div class="grid stats-grid">
+        <section class="card">
+          <p class="hint">Logs in periode</p>
+          <p class="stat-value">${entries.length}</p>
+        </section>
+        <section class="card">
+          <p class="hint">Actieve dagen</p>
+          <p class="stat-value">${new Set(entries.map((e) => localISODate(parsePbDate(e.logged_at)))).size}</p>
+        </section>
+      </div>
+      ${state.trackers.filter((t) => !t.archived).map((tracker) => trackerStats(tracker, byTracker.get(tracker.id) || [])).join("")}
+    </div>
   `;
 }
 
@@ -1052,6 +1042,46 @@ function streakFor(tracker) {
 }
 
 function trackerStats(tracker, items) {
+  const headHtml = `
+    <div class="row stats-tracker-head" style="justify-content:space-between;align-items:center">
+      <span class="tracker-chip tracker-chip--preview tracker-chip--stat" style="--chip-color:${escapeHtml(tracker.color)}">
+        <span class="tracker-chip-label">${escapeHtml(trackerChipLabel(tracker.name))}</span>
+      </span>
+      <span class="hint">reeks ${streakFor(tracker)}d</span>
+    </div>
+  `;
+
+  if (tracker.type === "choice") {
+    const configured = optionsOf(tracker).choices || [];
+    const choiceCounts = {};
+    configured.forEach((label) => { choiceCounts[label] = 0; });
+    items.forEach((e) => {
+      const key = e.value_text || "—";
+      choiceCounts[key] = (choiceCounts[key] || 0) + 1;
+    });
+    const labels = [...new Set([...configured, ...Object.keys(choiceCounts)])];
+    const maxChoice = Math.max(1, ...labels.map((label) => choiceCounts[label] || 0));
+    const colors = choiceColorsForTracker(tracker);
+    const rows = labels.map((label) => {
+      const count = choiceCounts[label] || 0;
+      const color = colors.get(label) || colorForChoiceValue(tracker, label);
+      return `
+        <div class="stat-choice-row">
+          <span class="stat-choice-label hint">${escapeHtml(label)}</span>
+          <div class="bar stat-choice-bar"><span style="width:${Math.round((count / maxChoice) * 100)}%;background:${escapeHtml(color)}"></span></div>
+          <span class="stat-choice-count hint">${count}×</span>
+        </div>
+      `;
+    }).join("");
+    return `
+      <section class="card stat-tracker-card">
+        ${headHtml}
+        <p class="stat-value">${items.length}<span class="hint" style="font-size:14px;font-weight:600"> logs</span></p>
+        <div class="stat-choice-rows">${rows}</div>
+      </section>
+    `;
+  }
+
   const total = tracker.type === "counter" || tracker.type === "number" || tracker.type === "scale"
     ? items.reduce((sum, e) => sum + Number(e.value_number || 0), 0)
     : items.length;
@@ -1062,26 +1092,11 @@ function trackerStats(tracker, items) {
     const list = state.entries.filter((e) => e.tracker === t.id);
     return list.length;
   }));
-  const choiceCounts = {};
-  if (tracker.type === "choice") {
-    items.forEach((e) => {
-      const key = e.value_text || "—";
-      choiceCounts[key] = (choiceCounts[key] || 0) + 1;
-    });
-  }
   return `
-    <section class="card" style="margin-top:12px">
-      <div class="row stats-tracker-head" style="justify-content:space-between;align-items:center">
-        <span class="tracker-chip tracker-chip--preview tracker-chip--stat" style="--chip-color:${escapeHtml(tracker.color)}">
-          <span class="tracker-chip-label">${escapeHtml(trackerChipLabel(tracker.name))}</span>
-        </span>
-        <span class="hint">reeks ${streakFor(tracker)}d</span>
-      </div>
+    <section class="card stat-tracker-card">
+      ${headHtml}
       <p class="stat-value">${avg ? `gem. ${avg}` : total}${tracker.unit && !avg ? ` ${escapeHtml(tracker.unit)}` : ""}</p>
       <div class="bar"><span style="width:${Math.round((items.length / max) * 100)}%;background:${tracker.color}"></span></div>
-      ${tracker.type === "choice" ? Object.entries(choiceCounts).sort((a, b) => b[1] - a[1]).map(([label, count]) => `
-        <p class="hint">${escapeHtml(label)} · ${count}x</p>
-      `).join("") : ""}
     </section>
   `;
 }
