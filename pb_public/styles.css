@@ -453,30 +453,86 @@ body.view-today .app.app--tiles {
   opacity: 0.45;
 }
 
-.tracker-chip-grid--admin,
 .tracker-chip-grid--pick {
   margin-top: 8px;
 }
 
-.tracker-admin-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-.tracker-chip--admin,
 .tracker-chip--pick {
   width: 100%;
   pointer-events: auto;
   cursor: pointer;
 }
 
-.tracker-admin-meta {
-  margin: 0;
+.trackers-admin {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 0;
+}
+
+.trackers-admin-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.trackers-admin-section {
+  min-width: 0;
+}
+
+.admin-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: clamp(10px, 2.8vw, 16px);
+}
+
+@media (min-width: 720px) {
+  .admin-icon-grid {
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+    gap: 16px;
+  }
+}
+
+.admin-icon-tile {
+  aspect-ratio: 1;
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--tile-color) 42%, var(--line));
+  border-radius: calc(var(--radius) + 4px);
+  background:
+    radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--tile-color) 18%, transparent), transparent 62%),
+    color-mix(in srgb, var(--tile-color) 12%, var(--card));
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.admin-icon-tile:active {
+  transform: scale(0.94);
+}
+
+.admin-icon-tile.is-archived {
+  opacity: 0.42;
+}
+
+.admin-icon-glyph {
+  font-size: clamp(28px, 7.5vw, 38px);
+  line-height: 1;
+}
+
+.admin-icon-glyph--text {
+  font-size: clamp(11px, 2.8vw, 13px);
+  font-weight: 750;
   text-align: center;
-  font-size: 10px;
-  line-height: 1.25;
+  line-height: 1.15;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
   padding: 0 2px;
 }
 
