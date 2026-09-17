@@ -356,12 +356,28 @@ body.view-today .app.app--tiles {
   -webkit-line-clamp: 4;
 }
 
+.tracker-chip-grid.tracker-chip-grid--focus > .tracker-chip .tracker-chip-check {
+  top: calc(var(--focus-cell, 64px) * 0.06);
+  right: calc(var(--focus-cell, 64px) * 0.06);
+  width: var(--chip-check-size, 16px);
+  height: var(--chip-check-size, 16px);
+}
+
+.tracker-chip-grid.tracker-chip-grid--focus > .tracker-chip .tracker-chip-check svg {
+  width: var(--chip-check-icon, 10px);
+  height: var(--chip-check-icon, 10px);
+}
+
 .tracker-chip-grid.tracker-chip-grid--focus > .tracker-chip .tracker-chip-badge {
   min-width: var(--chip-badge-size, 16px);
   height: var(--chip-badge-size, 16px);
   font-size: var(--chip-badge-font, 10px);
-  top: calc(var(--focus-cell, 64px) * 0.06);
+}
+
+.tracker-chip-grid.tracker-chip-grid--focus > .tracker-chip .tracker-chip-badge--count {
+  bottom: calc(var(--focus-cell, 64px) * 0.06);
   right: calc(var(--focus-cell, 64px) * 0.06);
+  top: auto;
 }
 
 .tracker-chip.is-active {
@@ -382,6 +398,25 @@ body.view-today .app.app--tiles {
   overflow: hidden;
 }
 
+.tracker-chip-check {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #22c55e;
+  color: #052e12;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+
+.tracker-chip-check svg {
+  display: block;
+}
+
 .tracker-chip-badge {
   position: absolute;
   top: 4px;
@@ -396,6 +431,69 @@ body.view-today .app.app--tiles {
   font-weight: 800;
   display: grid;
   place-items: center;
+  pointer-events: none;
+}
+
+.tracker-chip-badge--count {
+  top: auto;
+  bottom: 4px;
+  right: 4px;
+}
+
+.tracker-chip.is-locked {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
+
+.tracker-chip.is-locked:active {
+  transform: none;
+}
+
+.tracker-chip.is-archived {
+  opacity: 0.45;
+}
+
+.tracker-chip-grid--admin,
+.tracker-chip-grid--pick {
+  margin-top: 8px;
+}
+
+.tracker-admin-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tracker-chip--admin,
+.tracker-chip--pick {
+  width: 100%;
+}
+
+.tracker-admin-meta {
+  margin: 0;
+  text-align: center;
+  font-size: 10px;
+  line-height: 1.25;
+  padding: 0 2px;
+}
+
+.tracker-chip--stat {
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+}
+
+.entry-chip {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+
+.log-modal-chip {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
 }
 
 .category-tile-empty {

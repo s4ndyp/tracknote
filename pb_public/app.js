@@ -37,7 +37,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.5";
+const APP_VERSION = "1.0.6";
 
 const CATEGORY_FOCUS_MARGIN = 28;
 const PREVIEW_CHIP_MIN = 56;
@@ -180,6 +180,14 @@ function optionsOf(tracker) {
     try { return JSON.parse(raw); } catch { return {}; }
   }
   return raw;
+}
+
+function trackerOncePerDay(tracker) {
+  return Boolean(tracker?.once_per_day);
+}
+
+function trackerIsLockedForDay(tracker, day) {
+  return trackerOncePerDay(tracker) && entriesForTracker(tracker.id, day).length > 0;
 }
 
 function toast(message) {
@@ -376,35 +384,91 @@ function categoryStatusText(categoryId, day) {
 
 function trackerChipMeta(tracker, day) {
   const items = entriesForTracker(tracker.id, day);
-  if (!items.length) return { active: false, badge: "" };
+  if (!items.length) return { filled: false, active: false, badge: "", locked: false };
+  const locked = trackerIsLockedForDay(tracker, day);
   if (tracker.type === "counter") {
     const total = items.reduce((sum, e) => sum + Number(e.value_number || 1), 0);
-    return { active: true, badge: String(total) };
+    return { filled: true, active: true, badge: String(total), locked };
   }
-  if (tracker.type === "check") return { active: true, badge: "" };
-  return { active: true, badge: "" };
+  return { filled: true, active: true, badge: "", locked };
 }
 
-function categoryTrackerChip(tracker, interactive) {
-  const day = selectedDayDate();
-  const meta = trackerChipMeta(tracker, day);
+function trackerChipInner(tracker, meta) {
+  const counterBadge = meta.filled && tracker.type === "counter" && meta.badge
+    ? `<span class="tracker-chip-badge tracker-chip-badge--count">${escapeHtml(meta.badge)}</span>`
+    : "";
+  const filledCheck = meta.filled
+    ? `<span class="tracker-chip-check" aria-hidden="true"><svg viewBox="0 0 12 12" width="10" height="10" fill="none"><path d="M2 6.2 4.8 9 10 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`
+    : "";
+  return `
+    <span class="tracker-chip-label">${escapeHtml(trackerChipLabel(tracker.name))}</span>
+    ${filledCheck}
+    ${counterBadge}
+  `;
+}
+
+function trackerChipHtml(tracker, {
+  interactive = false,
+  day = null,
+  editTrackerId = null,
+  logTrackerId = null,
+  logOnDay = null,
+  extraClass = "",
+  showDayState = true,
+} = {}) {
+  const dayDate = day || selectedDayDate();
+  const meta = showDayState
+    ? trackerChipMeta(tracker, dayDate)
+    : { filled: false, active: false, badge: "", locked: false };
   const title = `${tracker.name}: ${summaryFor(tracker, day)}`;
+  const locked = interactive && meta.locked;
+  const classes = [
+    "tracker-chip",
+    meta.active ? "is-active" : "",
+    meta.filled ? "is-filled" : "",
+    locked ? "is-locked" : "",
+    interactive ? "" : "tracker-chip--preview",
+    tracker.archived ? "is-archived" : "",
+    extraClass,
+  ].filter(Boolean).join(" ");
+
+  if (editTrackerId || logTrackerId) {
+    const lockedLog = Boolean(logTrackerId && meta.locked);
+    const attrs = editTrackerId
+      ? `type="button" data-edit-tracker="${editTrackerId}"`
+      : `type="button" data-log-tracker="${logTrackerId}" data-on-day="${escapeHtml(logOnDay || "")}"${lockedLog ? " disabled" : ""}`;
+    return `
+      <button
+        ${attrs}
+        class="${classes}${lockedLog ? " is-locked" : ""}"
+        title="${escapeHtml(tracker.name)}"
+        aria-label="${escapeHtml(tracker.name)}"
+        style="--chip-color:${escapeHtml(tracker.color)}"
+      >
+        ${trackerChipInner(tracker, meta)}
+      </button>
+    `;
+  }
+
   const tag = interactive ? "button" : "span";
   const actionAttrs = interactive
-    ? `type="button" data-open-tracker="${tracker.id}"`
+    ? `type="button" data-open-tracker="${tracker.id}"${locked ? " disabled" : ""}`
     : `aria-hidden="true"`;
   return `
     <${tag}
       ${actionAttrs}
-      class="tracker-chip ${meta.active ? "is-active" : ""} ${interactive ? "" : "tracker-chip--preview"}"
+      class="${classes}"
       title="${escapeHtml(title)}"
       ${interactive ? `aria-label="${escapeHtml(title)}"` : ""}
       style="--chip-color:${escapeHtml(tracker.color)}"
     >
-      <span class="tracker-chip-label">${escapeHtml(trackerChipLabel(tracker.name))}</span>
-      ${meta.badge ? `<span class="tracker-chip-badge">${escapeHtml(meta.badge)}</span>` : ""}
+      ${trackerChipInner(tracker, meta)}
     </${tag}>
   `;
+}
+
+function categoryTrackerChip(tracker, interactive) {
+  return trackerChipHtml(tracker, { interactive, day: selectedDayDate() });
 }
 
 function categoryTileContent(category, interactiveTrackers) {
@@ -527,6 +591,8 @@ function applyFocusTrackerScale(panel) {
   grid.style.setProperty("--chip-radius", `${Math.max(8, cell * 0.18)}px`);
   grid.style.setProperty("--chip-badge-size", `${Math.max(14, cell * 0.28)}px`);
   grid.style.setProperty("--chip-badge-font", `${Math.max(9, cell * 0.16)}px`);
+  grid.style.setProperty("--chip-check-size", `${Math.max(16, cell * 0.26)}px`);
+  grid.style.setProperty("--chip-check-icon", `${Math.max(9, cell * 0.14)}px`);
 }
 
 function scheduleFocusTrackerScale(panel) {
@@ -888,8 +954,10 @@ function trackerStats(tracker, items) {
   }
   return `
     <section class="card" style="margin-top:12px">
-      <div class="row" style="justify-content:space-between">
-        <h3 style="margin:0">${escapeHtml(tracker.icon || "")} ${escapeHtml(tracker.name)}</h3>
+      <div class="row stats-tracker-head" style="justify-content:space-between;align-items:center">
+        <span class="tracker-chip tracker-chip--preview tracker-chip--stat" style="--chip-color:${escapeHtml(tracker.color)}">
+          <span class="tracker-chip-label">${escapeHtml(trackerChipLabel(tracker.name))}</span>
+        </span>
         <span class="hint">reeks ${streakFor(tracker)}d</span>
       </div>
       <p class="stat-value">${avg ? `gem. ${avg}` : total}${tracker.unit && !avg ? ` ${escapeHtml(tracker.unit)}` : ""}</p>
@@ -925,18 +993,15 @@ function renderTrackers() {
       `).join("") || `<p class="empty">Nog geen categorieën.</p>`}
     </div>
     <h3 class="section-title">Trackers</h3>
-    <div class="grid">
+    <div class="tracker-chip-grid tracker-chip-grid--admin">
       ${state.trackers.map((tracker) => {
         const cat = categoryById(tracker.category) || overigCategory();
+        const metaLine = `${TYPE_LABELS[tracker.type] || tracker.type} · ${cat?.name || "Overig"}${tracker.archived ? " · gearchiveerd" : ""}`;
         return `
-        <article class="card tracker-card" data-edit-tracker="${tracker.id}">
-          <div class="swatch" style="background:${tracker.color};opacity:${tracker.archived ? 0.4 : 1}">${escapeHtml(tracker.icon || "●")}</div>
-          <div class="meta">
-            <h3>${escapeHtml(tracker.name)}</h3>
-            <p>${TYPE_LABELS[tracker.type] || tracker.type} · ${escapeHtml(cat?.name || "Overig")}${tracker.archived ? " · gearchiveerd" : ""}</p>
-          </div>
-          <span class="pill">${tracker.sort_order ?? 0}</span>
-        </article>
+        <div class="tracker-admin-item">
+          ${trackerChipHtml(tracker, { editTrackerId: tracker.id, extraClass: "tracker-chip--admin", showDayState: false })}
+          <p class="hint tracker-admin-meta">${escapeHtml(metaLine)} · volgorde ${tracker.sort_order ?? 0}</p>
+        </div>
       `;
       }).join("")}
     </div>
@@ -1001,6 +1066,11 @@ function trackerForm(tracker = null) {
     <label>Volgorde</label>
     <input id="f-sort" type="number" value="${tracker?.sort_order ?? state.trackers.length + 1}" />
     <label class="row" style="margin-top:12px">
+      <input id="f-once-day" type="checkbox" ${tracker?.once_per_day ? "checked" : ""} style="width:auto" />
+      Maximaal 1× per dag
+    </label>
+    <p class="hint" style="margin-top:4px">Na invullen is de tracker op Vandaag niet meer klikbaar tot je de log verwijdert via Logs.</p>
+    <label class="row" style="margin-top:12px">
       <input id="f-archived" type="checkbox" ${tracker?.archived ? "checked" : ""} style="width:auto" />
       Gearchiveerd
     </label>
@@ -1041,7 +1111,9 @@ function logForm(tracker, entry = null, date = new Date()) {
   }
   return `
     <div class="log-modal-head">
-      <div class="swatch log-modal-swatch" style="background:${escapeHtml(tracker.color)}">${escapeHtml(tracker.icon || "●")}</div>
+      <span class="tracker-chip tracker-chip--preview log-modal-chip" style="--chip-color:${escapeHtml(tracker.color)}">
+        <span class="tracker-chip-label">${escapeHtml(trackerChipLabel(tracker.name))}</span>
+      </span>
       <div class="log-modal-titles">
         <h2 class="log-modal-title">${escapeHtml(tracker.name)}</h2>
         <p class="hint">${escapeHtml(tracker.description || TYPE_LABELS[tracker.type])}</p>
@@ -1074,7 +1146,9 @@ function daySheet(dateStr) {
       const label = entry.value_text || entry.value_number || "✓";
       return `
         <div class="entry">
-          <div class="swatch" style="background:${tracker?.color || "#64748b"};width:34px;height:34px;border-radius:12px;font-size:16px">${escapeHtml(tracker?.icon || "●")}</div>
+          <span class="tracker-chip tracker-chip--preview entry-chip" style="--chip-color:${escapeHtml(tracker?.color || "#64748b")}">
+            <span class="tracker-chip-label">${escapeHtml(trackerChipLabel(tracker?.name || "?"))}</span>
+          </span>
           <div>
             <strong>${escapeHtml(tracker?.name || "Onbekend")}</strong>
             <p class="hint">${escapeHtml(String(label))} · ${formatTime(parsePbDate(entry.logged_at))}${entry.note ? ` · ${escapeHtml(entry.note)}` : ""}</p>
@@ -1093,13 +1167,13 @@ function pickTrackerSheet(dateStr) {
   const active = state.trackers.filter((t) => !t.archived);
   return `
     <h2 style="margin:0 0 8px">Wat wil je loggen?</h2>
-    <div class="grid">
-      ${active.map((t) => `
-        <button class="card tracker-card" data-log-tracker="${t.id}" data-on-day="${dateStr}" type="button">
-          <div class="swatch" style="background:${t.color}">${escapeHtml(t.icon || "●")}</div>
-          <div class="meta"><h3>${escapeHtml(t.name)}</h3><p>${TYPE_LABELS[t.type]}</p></div>
-        </button>
-      `).join("")}
+    <div class="tracker-chip-grid tracker-chip-grid--pick">
+      ${active.map((t) => trackerChipHtml(t, {
+        logTrackerId: t.id,
+        logOnDay: dateStr,
+        day: new Date(`${dateStr}T12:00:00`),
+        extraClass: "tracker-chip--pick",
+      })).join("")}
     </div>
   `;
 }
@@ -1153,6 +1227,7 @@ async function saveTracker(id) {
     description: document.getElementById("f-desc").value.trim(),
     sort_order: Number(document.getElementById("f-sort").value || 0),
     archived: document.getElementById("f-archived").checked,
+    once_per_day: document.getElementById("f-once-day").checked,
     category: categoryId || null,
     options: parseOptions(type, document.getElementById("f-options").value),
   };
@@ -1185,7 +1260,16 @@ function collectEntryValues() {
 }
 
 async function saveEntry(id, trackerId) {
-  const payload = { tracker: trackerId, ...collectEntryValues() };
+  const values = collectEntryValues();
+  if (id === "new") {
+    const tracker = trackerById(trackerId);
+    const day = parsePbDate(values.logged_at);
+    if (tracker && trackerIsLockedForDay(tracker, day)) {
+      toast(`${tracker.name} is die dag al ingevuld`);
+      return;
+    }
+  }
+  const payload = { tracker: trackerId, ...values };
   if (id === "new") {
     await pbRequest("/api/collections/entries/records", { method: "POST", body: JSON.stringify(payload) });
   } else {
@@ -1197,6 +1281,11 @@ async function saveEntry(id, trackerId) {
 }
 
 async function quickCounter(tracker) {
+  const day = selectedDayDate();
+  if (trackerIsLockedForDay(tracker, day)) {
+    toast(`${tracker.name} is vandaag al ingevuld`);
+    return;
+  }
   await pbRequest("/api/collections/entries/records", {
     method: "POST",
     body: JSON.stringify({
@@ -1212,6 +1301,10 @@ async function quickCounter(tracker) {
 async function quickCheck(tracker) {
   const day = selectedDayDate();
   const existing = entriesForTracker(tracker.id, day);
+  if (trackerOncePerDay(tracker) && existing.length) {
+    toast(`${tracker.name} is al ingevuld — verwijder via Logs om opnieuw te loggen`);
+    return;
+  }
   if (existing.length) {
     await pbRequest(`/api/collections/entries/records/${existing[0].id}`, { method: "DELETE" });
     toast(`${tracker.name} ongedaan`);
@@ -1251,6 +1344,10 @@ appEl.addEventListener("click", async (event) => {
   }
   if (t.dataset.openTracker) {
     const tracker = trackerById(t.dataset.openTracker);
+    if (trackerIsLockedForDay(tracker, selectedDayDate())) {
+      toast(`${tracker.name} is al ingevuld — verwijder via Logs om opnieuw te loggen`);
+      return;
+    }
     if (tracker.type === "check") {
       await quickCheck(tracker);
       return;
@@ -1364,6 +1461,11 @@ sheetEl.addEventListener("click", async (event) => {
     if (t.dataset.logTracker) {
       const tracker = trackerById(t.dataset.logTracker);
       const date = new Date(`${t.dataset.onDay}T${pad(new Date().getHours())}:${pad(new Date().getMinutes())}:00`);
+      const dayForLog = new Date(`${t.dataset.onDay}T12:00:00`);
+      if (trackerIsLockedForDay(tracker, dayForLog)) {
+        toast(`${tracker.name} is die dag al ingevuld`);
+        return;
+      }
       if (tracker.type === "check" || tracker.type === "counter") {
         await pbRequest("/api/collections/entries/records", {
           method: "POST",
