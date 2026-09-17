@@ -481,6 +481,11 @@ body.view-today .app.app--tiles {
   min-width: 0;
 }
 
+.trackers-admin-section + .trackers-admin-section {
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+}
+
 .admin-icon-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
