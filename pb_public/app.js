@@ -547,18 +547,21 @@ function bindFocusScaleObserver(panel) {
 function afterPanelExpandAnimation(panel, callback) {
   const props = ["width", "height", "top", "left"];
   let done = false;
+  let settleTimer;
   const finish = () => {
     if (done) return;
     done = true;
     panel.removeEventListener("transitionend", onEnd);
+    clearTimeout(settleTimer);
     clearTimeout(fallback);
     callback();
   };
   const onEnd = (event) => {
     if (!props.includes(event.propertyName)) return;
-    finish();
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(finish, 36);
   };
-  const fallback = setTimeout(finish, 450);
+  const fallback = setTimeout(finish, 460);
   panel.addEventListener("transitionend", onEnd);
 }
 
