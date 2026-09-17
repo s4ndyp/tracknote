@@ -37,7 +37,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.7";
+const APP_VERSION = "1.0.8";
 
 const CATEGORY_FOCUS_MARGIN = 28;
 const PREVIEW_CHIP_MIN = 56;
@@ -812,6 +812,7 @@ function renderCalendar() {
         </button>
       `).join("")}
     </div>
+    ${state.calendarFilterTrackerId ? `<p class="hint cal-filter-hint">Waarde per dag in de cel · tik op een dag voor alle details</p>` : ""}
     <div class="mini-months ${range === "year" ? "year" : ""}">
       ${list.map(({ year, month }) => calendarMonth(year, month, range === "month")).join("")}
     </div>
@@ -828,11 +829,6 @@ function calendarEntriesForDay(date) {
 
 function dotsForDay(date) {
   const items = calendarEntriesForDay(date);
-  if (state.calendarFilterTrackerId) {
-    const tracker = trackerById(state.calendarFilterTrackerId);
-    const color = tracker?.color || "#64748b";
-    return items.slice(0, 8).map(() => `<i class="dot" style="background:${color}"></i>`).join("");
-  }
   const groups = new Map();
   items.forEach((entry) => {
     const tracker = trackerById(entry.tracker);
@@ -842,22 +838,77 @@ function dotsForDay(date) {
   return [...groups.values()].slice(0, 8).map((color) => `<i class="dot" style="background:${color}"></i>`).join("");
 }
 
+function truncateCalendarLabel(text, max) {
+  const value = String(text ?? "").trim();
+  if (value.length <= max) return value;
+  return `${value.slice(0, Math.max(1, max - 1))}…`;
+}
+
+function calendarValueLabel(tracker, items, { mini = false } = {}) {
+  if (!tracker || !items.length) return "";
+  const textMax = mini ? 5 : 16;
+  if (tracker.type === "check") return "✓";
+  if (tracker.type === "counter") {
+    const total = items.reduce((sum, e) => sum + Number(e.value_number || 1), 0);
+    if (mini) return String(total);
+    const unit = tracker.unit ? ` ${truncateCalendarLabel(tracker.unit, 8)}` : "";
+    return `${total}${unit}`;
+  }
+  if (tracker.type === "scale" || tracker.type === "number") {
+    const last = items[0];
+    const num = last.value_number ?? "—";
+    if (mini || !tracker.unit) return String(num);
+    return `${num} ${truncateCalendarLabel(tracker.unit, 6)}`;
+  }
+  if (tracker.type === "choice" || tracker.type === "text") {
+    const joined = items.map((e) => e.value_text).filter(Boolean).join(mini ? "+" : " · ");
+    return truncateCalendarLabel(joined || `${items.length}×`, textMax);
+  }
+  return `${items.length}×`;
+}
+
+function calendarDayMark(date, mini) {
+  if (!state.calendarFilterTrackerId) {
+    const dots = dotsForDay(date);
+    return dots ? `<span class="dots">${dots}</span>` : `<span class="day-mark day-mark--empty" aria-hidden="true"></span>`;
+  }
+  const items = calendarEntriesForDay(date);
+  const tracker = trackerById(state.calendarFilterTrackerId);
+  if (!items.length || !tracker) {
+    return `<span class="day-mark day-mark--empty" aria-hidden="true"></span>`;
+  }
+  const label = calendarValueLabel(tracker, items, { mini });
+  const full = summaryFor(tracker, date);
+  const color = tracker.color || "#64748b";
+  return `
+    <span class="day-mark" title="${escapeHtml(full)}">
+      <span class="day-value" style="--mark-color:${escapeHtml(color)}">${escapeHtml(label)}</span>
+    </span>
+  `;
+}
+
 function calendarMonth(year, month, large) {
   const days = monthMatrix(year, month);
   const title = new Date(year, month, 1).toLocaleDateString("nl-NL", { month: "long", year: "numeric" });
   const today = localISODate(new Date());
+  const filtered = Boolean(state.calendarFilterTrackerId);
+  const mini = !large;
   return `
-    <section class="card ${large ? "" : "mini-cal"}">
+    <section class="card ${large ? "" : "mini-cal"} ${filtered ? "cal-filtered" : ""}">
       <h3 style="margin:0 0 10px">${title}</h3>
-      <div class="calendar">
+      <div class="calendar ${filtered ? "calendar--filtered" : ""}">
         ${DOW.map((d) => `<div class="dow">${d}</div>`).join("")}
         ${days.map((day) => {
           const inMonth = day.getMonth() === month;
           const key = localISODate(day);
+          const items = calendarEntriesForDay(day);
+          const dayTitle = filtered && items.length
+            ? `${key}: ${summaryFor(trackerById(state.calendarFilterTrackerId), day)}`
+            : key;
           return `
-            <button class="day ${inMonth ? "" : "is-muted"} ${key === today ? "is-today" : ""}" data-day="${key}" type="button">
+            <button class="day ${inMonth ? "" : "is-muted"} ${key === today ? "is-today" : ""} ${filtered && items.length ? "has-value" : ""}" data-day="${key}" type="button" title="${escapeHtml(dayTitle)}">
               <span class="day-num">${day.getDate()}</span>
-              <span class="dots">${dotsForDay(day)}</span>
+              ${calendarDayMark(day, mini)}
             </button>
           `;
         }).join("")}
