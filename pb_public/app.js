@@ -37,7 +37,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.6";
+const APP_VERSION = "1.0.7";
 
 const CATEGORY_FOCUS_MARGIN = 28;
 const PREVIEW_CHIP_MIN = 56;
@@ -973,41 +973,61 @@ function trackerStats(tracker, items) {
   `;
 }
 
+function adminIconGlyph(tracker) {
+  const icon = String(tracker.icon || "").trim();
+  if (icon) return { html: escapeHtml(icon), text: false };
+  return { html: escapeHtml(trackerChipLabel(tracker.name)), text: true };
+}
+
+function categoryAdminIcon(category) {
+  return `
+    <button
+      type="button"
+      class="admin-icon-tile"
+      data-edit-category="${category.id}"
+      style="--tile-color:${escapeHtml(category.color)}"
+      title="${escapeHtml(category.name)}"
+      aria-label="${escapeHtml(category.name)}"
+    >
+      <span class="admin-icon-glyph" aria-hidden="true">${escapeHtml(category.icon || "▣")}</span>
+    </button>
+  `;
+}
+
+function trackerAdminIcon(tracker) {
+  const glyph = adminIconGlyph(tracker);
+  return `
+    <button
+      type="button"
+      class="admin-icon-tile admin-icon-tile--tracker ${tracker.archived ? "is-archived" : ""}"
+      data-edit-tracker="${tracker.id}"
+      style="--tile-color:${escapeHtml(tracker.color)}"
+      title="${escapeHtml(tracker.name)}"
+      aria-label="${escapeHtml(tracker.name)}"
+    >
+      <span class="admin-icon-glyph ${glyph.text ? "admin-icon-glyph--text" : ""}" aria-hidden="true">${glyph.html}</span>
+    </button>
+  `;
+}
+
 function renderTrackers() {
   appEl.classList.remove("app--tiles");
   appEl.innerHTML = `
-    <div class="toolbar">
-      <p class="hint">${state.categories.length} cat. · ${state.trackers.length} trackers</p>
-      <div class="row">
-        <button class="btn btn-ghost" data-action="new-category" type="button">Categorie</button>
-        <button class="btn btn-primary" data-action="new-tracker" type="button" style="width:auto">Tracker</button>
+    <div class="trackers-admin">
+      <div class="trackers-admin-toolbar">
+        <button class="btn btn-ghost" data-action="new-category" type="button">+ Categorie</button>
+        <button class="btn btn-primary" data-action="new-tracker" type="button" style="width:auto">+ Tracker</button>
       </div>
-    </div>
-    <h3 class="section-title">Categorieën</h3>
-    <div class="grid">
-      ${state.categories.map((category) => `
-        <article class="card tracker-card" data-edit-category="${category.id}">
-          <div class="swatch" style="background:${category.color}">${escapeHtml(category.icon || "▣")}</div>
-          <div class="meta">
-            <h3>${escapeHtml(category.name)}</h3>
-            <p>${trackersInCategory(category.id).length} trackers</p>
-          </div>
-          <span class="pill">${category.sort_order ?? 0}</span>
-        </article>
-      `).join("") || `<p class="empty">Nog geen categorieën.</p>`}
-    </div>
-    <h3 class="section-title">Trackers</h3>
-    <div class="tracker-chip-grid tracker-chip-grid--admin">
-      ${state.trackers.map((tracker) => {
-        const cat = categoryById(tracker.category) || overigCategory();
-        const metaLine = `${TYPE_LABELS[tracker.type] || tracker.type} · ${cat?.name || "Overig"}${tracker.archived ? " · gearchiveerd" : ""}`;
-        return `
-        <div class="tracker-admin-item">
-          ${trackerChipHtml(tracker, { editTrackerId: tracker.id, extraClass: "tracker-chip--admin", showDayState: false })}
-          <p class="hint tracker-admin-meta">${escapeHtml(metaLine)} · volgorde ${tracker.sort_order ?? 0}</p>
+      <section class="trackers-admin-section" aria-label="Categorieën">
+        <div class="admin-icon-grid">
+          ${state.categories.map(categoryAdminIcon).join("") || `<p class="empty">Nog geen categorieën.</p>`}
         </div>
-      `;
-      }).join("")}
+      </section>
+      <section class="trackers-admin-section" aria-label="Trackers">
+        <div class="admin-icon-grid admin-icon-grid--trackers">
+          ${state.trackers.map(trackerAdminIcon).join("") || `<p class="empty">Nog geen trackers.</p>`}
+        </div>
+      </section>
     </div>
   `;
 }
