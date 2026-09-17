@@ -37,7 +37,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.4";
+const APP_VERSION = "1.0.5";
 
 const CATEGORY_FOCUS_MARGIN = 28;
 const PREVIEW_CHIP_MIN = 56;
@@ -474,6 +474,8 @@ function capturePreviewGridMetrics(tile) {
 
   const gap = parseFloat(getComputedStyle(grid).columnGap) || PREVIEW_CHIP_GAP;
   const previewCell = chip.getBoundingClientRect().width;
+  const label = chip.querySelector(".tracker-chip-label");
+  const previewFont = label ? parseFloat(getComputedStyle(label).fontSize) : 10;
 
   return {
     frameW: frame.clientWidth,
@@ -481,6 +483,7 @@ function capturePreviewGridMetrics(tile) {
     cols: measureGridColumns(grid),
     gap,
     previewCell: previewCell || PREVIEW_CHIP_MIN,
+    previewFont: previewFont || 10,
   };
 }
 
@@ -515,8 +518,12 @@ function applyFocusTrackerScale(panel) {
   grid.style.alignContent = "center";
   grid.style.justifyContent = "center";
 
+  const sizeRatio = cell / Math.max(metrics.previewCell, 1);
+  const fontSize = Math.max(9, Math.min((metrics.previewFont || 10) * sizeRatio * 0.9, 18));
+
   grid.style.setProperty("--focus-cell", `${cell}px`);
-  grid.style.setProperty("--chip-font", `${Math.max(10, Math.min(cell * 0.19, 22))}px`);
+  grid.style.setProperty("--chip-font", `${fontSize}px`);
+  grid.style.setProperty("--chip-pad", `${Math.max(4, 4 * sizeRatio)}px`);
   grid.style.setProperty("--chip-radius", `${Math.max(8, cell * 0.18)}px`);
   grid.style.setProperty("--chip-badge-size", `${Math.max(14, cell * 0.28)}px`);
   grid.style.setProperty("--chip-badge-font", `${Math.max(9, cell * 0.16)}px`);
@@ -667,6 +674,7 @@ function expandCategory(categoryId) {
     cols: 2,
     gap: PREVIEW_CHIP_GAP,
     previewCell: PREVIEW_CHIP_MIN,
+    previewFont: 10,
   };
   state.categoryExpandRect = {
     top: rect.top,
