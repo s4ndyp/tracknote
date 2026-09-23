@@ -1101,10 +1101,8 @@ function trackerStats(tracker, items) {
   `;
 }
 
-function adminIconGlyph(tracker) {
-  const icon = String(tracker.icon || "").trim();
-  if (icon) return { html: escapeHtml(icon), text: false };
-  return { html: escapeHtml(trackerChipLabel(tracker.name)), text: true };
+function adminTileLabel(name) {
+  return escapeHtml(trackerChipLabel(name));
 }
 
 function categoryAdminIcon(category) {
@@ -1117,13 +1115,12 @@ function categoryAdminIcon(category) {
       title="${escapeHtml(category.name)}"
       aria-label="${escapeHtml(category.name)}"
     >
-      <span class="admin-icon-glyph" aria-hidden="true">${escapeHtml(category.icon || "▣")}</span>
+      <span class="admin-icon-glyph admin-icon-glyph--text" aria-hidden="true">${adminTileLabel(category.name)}</span>
     </button>
   `;
 }
 
 function trackerAdminIcon(tracker) {
-  const glyph = adminIconGlyph(tracker);
   return `
     <button
       type="button"
@@ -1133,7 +1130,7 @@ function trackerAdminIcon(tracker) {
       title="${escapeHtml(tracker.name)}"
       aria-label="${escapeHtml(tracker.name)}"
     >
-      <span class="admin-icon-glyph ${glyph.text ? "admin-icon-glyph--text" : ""}" aria-hidden="true">${glyph.html}</span>
+      <span class="admin-icon-glyph admin-icon-glyph--text" aria-hidden="true">${adminTileLabel(tracker.name)}</span>
     </button>
   `;
 }
@@ -1166,8 +1163,6 @@ function categoryForm(category = null) {
     <h2 style="margin:0 0 8px">${category ? "Categorie bewerken" : "Nieuwe categorie"}</h2>
     <label>Naam</label>
     <input id="f-cat-name" value="${escapeHtml(category?.name || "")}" placeholder="Bijv. Gezondheid" />
-    <label>Icoon (emoji)</label>
-    <input id="f-cat-icon" value="${escapeHtml(category?.icon || "")}" placeholder="🩺" maxlength="8" />
     <label>Kleur</label>
     <div class="colors" id="cat-colors">
       ${COLORS.map((c) => `<button class="color-dot ${c === color ? "is-active" : ""}" data-color="${c}" data-cat-color style="background:${c}" type="button"></button>`).join("")}
@@ -1190,8 +1185,6 @@ function trackerForm(tracker = null) {
     <h2 style="margin:0 0 8px">${tracker ? "Tracker bewerken" : "Nieuwe tracker"}</h2>
     <label>Naam</label>
     <input id="f-name" value="${escapeHtml(tracker?.name || "")}" placeholder="Bijv. Hoofdpijn" />
-    <label>Icoon (emoji)</label>
-    <input id="f-icon" value="${escapeHtml(tracker?.icon || "")}" placeholder="💊" maxlength="8" />
     <label>Kleur</label>
     <div class="colors">
       ${COLORS.map((c) => `<button class="color-dot ${c === color ? "is-active" : ""}" data-color="${c}" style="background:${c}" type="button"></button>`).join("")}
@@ -1349,7 +1342,6 @@ function parseOptions(type, raw) {
 async function saveCategory(id) {
   const payload = {
     name: document.getElementById("f-cat-name").value.trim(),
-    icon: document.getElementById("f-cat-icon").value.trim(),
     color: document.getElementById("f-cat-color").value.trim() || COLORS[0],
     sort_order: Number(document.getElementById("f-cat-sort").value || 0),
   };
@@ -1372,7 +1364,6 @@ async function saveTracker(id) {
   const categoryId = document.getElementById("f-category")?.value || "";
   const payload = {
     name: document.getElementById("f-name").value.trim(),
-    icon: document.getElementById("f-icon").value.trim(),
     color: document.getElementById("f-color").value.trim() || COLORS[0],
     type,
     unit: document.getElementById("f-unit").value.trim(),
