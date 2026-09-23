@@ -28,8 +28,10 @@ const state = {
   categories: [],
   entries: [],
   calendarRange: "month",
+  calendarAnchor: localISODate(new Date()),
   calendarFilterTrackerId: null,
   statsRange: "month",
+  statsAnchor: localISODate(new Date()),
   selectedDay: localISODate(new Date()),
   expandedCategoryId: null,
   categoryExpandRect: null,
@@ -791,18 +793,21 @@ function monthMatrix(year, month) {
 function renderCalendar() {
   appEl.classList.remove("app--tiles");
   const range = state.calendarRange;
-  const now = new Date();
+  const anchor = periodAnchorDate("calendar");
   const months = range === "month" ? 1 : range === "6m" ? 6 : 12;
   const list = [];
   for (let i = months - 1; i >= 0; i -= 1) {
-    const d = addMonths(now, -i);
+    const d = addMonths(anchor, -i);
     list.push({ year: d.getFullYear(), month: d.getMonth() });
   }
   appEl.innerHTML = `
-    <div class="segment" role="tablist">
-      <button data-cal-range="month" class="${range === "month" ? "is-active" : ""}" type="button">Deze maand</button>
-      <button data-cal-range="6m" class="${range === "6m" ? "is-active" : ""}" type="button">6 maanden</button>
-      <button data-cal-range="year" class="${range === "year" ? "is-active" : ""}" type="button">Jaar</button>
+    <div class="period-toolbar">
+      ${periodNavHtml("calendar")}
+      <div class="segment" role="tablist">
+        <button data-cal-range="month" class="${range === "month" ? "is-active" : ""}" type="button">Deze maand</button>
+        <button data-cal-range="6m" class="${range === "6m" ? "is-active" : ""}" type="button">6 maanden</button>
+        <button data-cal-range="year" class="${range === "year" ? "is-active" : ""}" type="button">Jaar</button>
+      </div>
     </div>
     <div class="legend filters" role="group" aria-label="Filter op tracker">
       <button type="button" class="filter-chip ${state.calendarFilterTrackerId ? "" : "is-active"}" data-cal-filter="all">Alle</button>
@@ -979,18 +984,85 @@ function calendarMonth(year, month, large) {
   `;
 }
 
-function rangeStart(kind) {
-  const now = new Date();
-  if (kind === "week") return startOfDay(addDays(now, -6));
-  if (kind === "year") return startOfDay(addMonths(now, -11));
-  if (kind === "6m") return startOfDay(addMonths(now, -5));
-  return startOfDay(new Date(now.getFullYear(), now.getMonth(), 1));
+function periodAnchorKey(view) {
+  return view === "calendar" ? "calendarAnchor" : "statsAnchor";
+}
+
+function periodAnchorDate(view) {
+  const iso = state[periodAnchorKey(view)] || localISODate(new Date());
+  return startOfDay(new Date(`${iso}T12:00:00`));
+}
+
+function resetPeriodAnchor(view) {
+  state[periodAnchorKey(view)] = localISODate(new Date());
+}
+
+function shiftPeriodAnchor(view, direction) {
+  const range = view === "calendar" ? state.calendarRange : state.statsRange;
+  let next = periodAnchorDate(view);
+  if (view === "stats" && range === "week") {
+    next = addDays(next, 7 * direction);
+  } else if (range === "month") {
+    next = addMonths(next, direction);
+  } else if (range === "6m") {
+    next = addMonths(next, 6 * direction);
+  } else if (range === "year") {
+    next = addMonths(next, 12 * direction);
+  }
+  state[periodAnchorKey(view)] = localISODate(next);
+}
+
+function formatPeriodLabel(view) {
+  const range = view === "calendar" ? state.calendarRange : state.statsRange;
+  const end = periodAnchorDate(view);
+  if (view === "stats" && range === "week") {
+    const from = addDays(end, -6);
+    return `${from.toLocaleDateString("nl-NL", { day: "numeric", month: "short" })} – ${end.toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" })}`;
+  }
+  if (range === "month") {
+    return end.toLocaleDateString("nl-NL", { month: "long", year: "numeric" });
+  }
+  const monthsBack = range === "6m" ? 5 : 11;
+  const from = addMonths(end, -monthsBack);
+  const fromLabel = from.toLocaleDateString("nl-NL", { month: "short" });
+  const toLabel = end.toLocaleDateString("nl-NL", { month: "short" });
+  if (from.getFullYear() === end.getFullYear()) {
+    return `${fromLabel} – ${toLabel} ${end.getFullYear()}`;
+  }
+  return `${fromLabel} ${from.getFullYear()} – ${toLabel} ${end.getFullYear()}`;
+}
+
+function periodNavHtml(view) {
+  const prevAction = view === "calendar" ? "cal-period-prev" : "stats-period-prev";
+  const nextAction = view === "calendar" ? "cal-period-next" : "stats-period-next";
+  return `
+    <div class="period-nav" role="group" aria-label="Periode">
+      <button class="icon-btn icon-btn-sm" data-action="${prevAction}" type="button" aria-label="Vorige periode">‹</button>
+      <p class="period-nav-label">${escapeHtml(formatPeriodLabel(view))}</p>
+      <button class="icon-btn icon-btn-sm" data-action="${nextAction}" type="button" aria-label="Volgende periode">›</button>
+    </div>
+  `;
+}
+
+function rangeStart(kind, endDate = new Date()) {
+  const end = startOfDay(endDate);
+  if (kind === "week") return startOfDay(addDays(end, -6));
+  if (kind === "year") return startOfDay(addMonths(end, -11));
+  if (kind === "6m") return startOfDay(addMonths(end, -5));
+  return startOfDay(new Date(end.getFullYear(), end.getMonth(), 1));
+}
+
+function statsPeriodBounds() {
+  const anchor = periodAnchorDate("stats");
+  return {
+    from: rangeStart(state.statsRange, anchor),
+    to: endOfDay(anchor),
+  };
 }
 
 function renderStats() {
   appEl.classList.remove("app--tiles");
-  const from = rangeStart(state.statsRange);
-  const to = endOfDay(new Date());
+  const { from, to } = statsPeriodBounds();
   const entries = state.entries.filter((e) => {
     const d = parsePbDate(e.logged_at);
     return d >= from && d <= to;
@@ -1002,6 +1074,7 @@ function renderStats() {
   });
   appEl.innerHTML = `
     <div class="period-toolbar">
+      ${periodNavHtml("stats")}
       <div class="segment">
         <button data-stats-range="week" class="${state.statsRange === "week" ? "is-active" : ""}" type="button">7 dagen</button>
         <button data-stats-range="month" class="${state.statsRange === "month" ? "is-active" : ""}" type="button">Deze maand</button>
@@ -1531,12 +1604,30 @@ appEl.addEventListener("click", async (event) => {
     state.calendarFilterTrackerId = t.dataset.calFilter === "all" ? null : t.dataset.calFilter;
     renderCalendar();
   }
+  if (t.dataset.action === "cal-period-prev") {
+    shiftPeriodAnchor("calendar", -1);
+    renderCalendar();
+  }
+  if (t.dataset.action === "cal-period-next") {
+    shiftPeriodAnchor("calendar", 1);
+    renderCalendar();
+  }
+  if (t.dataset.action === "stats-period-prev") {
+    shiftPeriodAnchor("stats", -1);
+    renderStats();
+  }
+  if (t.dataset.action === "stats-period-next") {
+    shiftPeriodAnchor("stats", 1);
+    renderStats();
+  }
   if (t.dataset.calRange) {
     state.calendarRange = t.dataset.calRange;
+    resetPeriodAnchor("calendar");
     renderCalendar();
   }
   if (t.dataset.statsRange) {
     state.statsRange = t.dataset.statsRange;
+    resetPeriodAnchor("stats");
     renderStats();
   }
   if (t.dataset.day) openSheet(daySheet(t.dataset.day));
