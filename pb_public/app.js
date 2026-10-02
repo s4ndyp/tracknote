@@ -36,7 +36,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.15";
+const APP_VERSION = "1.0.16";
 
 const appEl = document.getElementById("app");
 const sheetEl = document.getElementById("sheet");
@@ -497,14 +497,14 @@ function renderToday() {
   const dayItems = entriesForDay(day);
   const dayLabel = isSelectedToday() ? "vandaag" : "op deze dag";
   const cats = [...state.categories].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-  const { cols, rows } = categoryGridLayout(Math.max(cats.length, 1));
+  const { cols } = categoryGridLayout(Math.max(cats.length, 1));
   appEl.classList.add("app--tiles");
   appEl.innerHTML = `
     ${todayBarHtml(day, dayItems, dayLabel)}
     <div class="category-stage-wrap">
       <div
         class="category-stage"
-        style="grid-template-columns:repeat(${cols},minmax(0,1fr));grid-template-rows:repeat(${rows},minmax(0,1fr))"
+        style="grid-template-columns:repeat(${cols},minmax(0,1fr))"
       >
         ${cats.length ? cats.map(categoryTile).join("") : `<p class="empty">Nog geen categorieën. Voeg ze toe onder Trackers.</p>`}
       </div>
