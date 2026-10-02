@@ -36,7 +36,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.11";
+const APP_VERSION = "1.0.12";
 
 const appEl = document.getElementById("app");
 const sheetEl = document.getElementById("sheet");
@@ -1437,4 +1437,15 @@ document.querySelector(".tabbar").addEventListener("click", (event) => {
 
 document.getElementById("refreshBtn").addEventListener("click", () => refresh());
 
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  const secure =
+    window.location.protocol === "https:" ||
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1";
+  if (!secure) return;
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
+registerServiceWorker();
 refresh();
