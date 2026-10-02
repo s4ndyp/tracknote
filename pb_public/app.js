@@ -33,19 +33,10 @@ const state = {
   statsRange: "month",
   statsAnchor: localISODate(new Date()),
   selectedDay: localISODate(new Date()),
-  expandedCategoryId: null,
-  categoryExpandRect: null,
-  categoryExpandMetrics: null,
   loading: false,
 };
 
-const APP_VERSION = "1.0.10";
-
-const CATEGORY_FOCUS_MARGIN = 28;
-const PREVIEW_CHIP_MIN = 56;
-const PREVIEW_CHIP_GAP = 6;
-
-let focusFrameResizeObserver = null;
+const APP_VERSION = "1.0.11";
 
 const appEl = document.getElementById("app");
 const sheetEl = document.getElementById("sheet");
@@ -300,12 +291,6 @@ function openLogModal(html) {
 
 function setView(view) {
   state.view = view;
-  state.expandedCategoryId = null;
-  state.categoryExpandRect = null;
-  state.categoryExpandMetrics = null;
-  if (view !== "today") {
-    disconnectFocusScaleObserver();
-  }
   if (view === "today") {
     state.selectedDay = localISODate(new Date());
   }
@@ -329,9 +314,6 @@ async function refresh(rangeDays = 400) {
   } finally {
     state.loading = false;
     render();
-    if (state.view === "today" && state.expandedCategoryId) {
-      syncCategoryFocusPanel({ animate: false });
-    }
   }
 }
 
@@ -477,7 +459,7 @@ function categoryTrackerChip(tracker, interactive) {
   return trackerChipHtml(tracker, { interactive, day: selectedDayDate() });
 }
 
-function categoryTileContent(category, interactiveTrackers) {
+function categoryTileContent(category) {
   const day = selectedDayDate();
   const trackers = trackersInCategory(category.id);
   return `
@@ -486,9 +468,9 @@ function categoryTileContent(category, interactiveTrackers) {
       <span class="category-tile-meta">${escapeHtml(categoryStatusText(category.id, day))}</span>
     </span>
     <span class="category-tile-frame">
-      <span class="tracker-chip-grid ${interactiveTrackers ? "tracker-chip-grid--focus" : ""}">
+      <span class="tracker-chip-grid tracker-chip-grid--category">
         ${trackers.length
-          ? trackers.map((t) => categoryTrackerChip(t, interactiveTrackers)).join("")
+          ? trackers.map((t) => categoryTrackerChip(t, true)).join("")
           : `<span class="category-tile-empty">Geen trackers</span>`}
       </span>
     </span>
@@ -496,266 +478,15 @@ function categoryTileContent(category, interactiveTrackers) {
 }
 
 function categoryTile(category) {
-  const isExpandedSource = state.expandedCategoryId === category.id;
   return `
-    <button
-      type="button"
-      class="category-tile category-tile-open ${isExpandedSource ? "is-source-hidden" : ""}"
+    <article
+      class="category-tile"
       data-category-id="${category.id}"
-      data-expand-category="${category.id}"
       style="--tile-color:${escapeHtml(category.color)}"
     >
-      ${categoryTileContent(category, false)}
-    </button>
+      ${categoryTileContent(category)}
+    </article>
   `;
-}
-
-function computeExpandedFocusRect() {
-  const topbar = document.querySelector(".topbar");
-  const tabbar = document.querySelector(".tabbar");
-  const top = (topbar?.getBoundingClientRect().bottom || 0) + CATEGORY_FOCUS_MARGIN;
-  const bottomLimit = (tabbar?.getBoundingClientRect().top || window.innerHeight) - CATEGORY_FOCUS_MARGIN;
-  const left = CATEGORY_FOCUS_MARGIN;
-  const width = window.innerWidth - CATEGORY_FOCUS_MARGIN * 2;
-  const height = Math.max(220, bottomLimit - top);
-  return { top, left, width, height };
-}
-
-function applyFocusPanelRect(panel, rect) {
-  panel.style.top = `${rect.top}px`;
-  panel.style.left = `${rect.left}px`;
-  panel.style.width = `${rect.width}px`;
-  panel.style.height = `${rect.height}px`;
-}
-
-function measureGridColumns(grid) {
-  const chips = grid.querySelectorAll(".tracker-chip");
-  if (!chips.length) return 1;
-  const xs = new Set();
-  chips.forEach((chip) => xs.add(Math.round(chip.offsetLeft)));
-  return Math.max(1, xs.size);
-}
-
-function capturePreviewGridMetrics(tile) {
-  const grid = tile.querySelector(".tracker-chip-grid");
-  const frame = tile.querySelector(".category-tile-frame");
-  const chip = grid?.querySelector(".tracker-chip");
-  if (!grid || !frame || !chip) return null;
-
-  const gap = parseFloat(getComputedStyle(grid).columnGap) || PREVIEW_CHIP_GAP;
-  const previewCell = chip.getBoundingClientRect().width;
-  const label = chip.querySelector(".tracker-chip-label");
-  const previewFont = label ? parseFloat(getComputedStyle(label).fontSize) : 10;
-
-  return {
-    frameW: frame.clientWidth,
-    frameH: frame.clientHeight,
-    cols: measureGridColumns(grid),
-    gap,
-    previewCell: previewCell || PREVIEW_CHIP_MIN,
-    previewFont: previewFont || 10,
-  };
-}
-
-function applyFocusTrackerScale(panel) {
-  const metrics = state.categoryExpandMetrics;
-  const grid = panel.querySelector(".tracker-chip-grid--focus");
-  const frame = panel.querySelector(".category-tile-frame");
-  if (!grid || !frame || !metrics?.frameW) return;
-
-  const count = grid.querySelectorAll(".tracker-chip").length;
-  if (!count) return;
-
-  const cols = metrics.cols || 1;
-  const rows = Math.ceil(count / cols);
-  const gap = metrics.gap ?? PREVIEW_CHIP_GAP;
-  const padX = parseFloat(getComputedStyle(frame).paddingLeft) + parseFloat(getComputedStyle(frame).paddingRight);
-  const padY = parseFloat(getComputedStyle(frame).paddingTop) + parseFloat(getComputedStyle(frame).paddingBottom);
-  const innerW = Math.max(0, frame.clientWidth - padX);
-  const innerH = Math.max(0, frame.clientHeight - padY);
-
-  const scale = Math.min(innerW / metrics.frameW, innerH / metrics.frameH);
-  let cell = metrics.previewCell * scale;
-
-  const maxCellW = (innerW - gap * (cols - 1)) / cols;
-  const maxCellH = (innerH - gap * (rows - 1)) / rows;
-  cell = Math.min(cell, maxCellW, maxCellH);
-
-  grid.style.display = "grid";
-  grid.style.gridTemplateColumns = `repeat(${cols}, ${cell}px)`;
-  grid.style.gridAutoRows = `${cell}px`;
-  grid.style.gap = `${gap}px`;
-  grid.style.alignContent = "center";
-  grid.style.justifyContent = "center";
-
-  const sizeRatio = cell / Math.max(metrics.previewCell, 1);
-  const fontSize = Math.max(9, Math.min((metrics.previewFont || 10) * sizeRatio * 0.9, 18));
-
-  grid.style.setProperty("--focus-cell", `${cell}px`);
-  grid.style.setProperty("--chip-font", `${fontSize}px`);
-  grid.style.setProperty("--chip-pad", `${Math.max(4, 4 * sizeRatio)}px`);
-  grid.style.setProperty("--chip-radius", `${Math.max(8, cell * 0.18)}px`);
-  grid.style.setProperty("--chip-badge-size", `${Math.max(14, cell * 0.28)}px`);
-  grid.style.setProperty("--chip-badge-font", `${Math.max(9, cell * 0.16)}px`);
-  grid.style.setProperty("--chip-check-size", `${Math.max(16, cell * 0.26)}px`);
-  grid.style.setProperty("--chip-check-icon", `${Math.max(9, cell * 0.14)}px`);
-}
-
-function scheduleFocusTrackerScale(panel) {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => applyFocusTrackerScale(panel));
-  });
-}
-
-function disconnectFocusScaleObserver() {
-  focusFrameResizeObserver?.disconnect();
-  focusFrameResizeObserver = null;
-}
-
-function bindFocusScaleObserver(panel) {
-  disconnectFocusScaleObserver();
-  const frame = panel.querySelector(".category-tile-frame");
-  if (!frame || typeof ResizeObserver === "undefined") return;
-
-  focusFrameResizeObserver = new ResizeObserver(() => {
-    applyFocusTrackerScale(panel);
-  });
-  focusFrameResizeObserver.observe(frame);
-}
-
-function afterPanelExpandAnimation(panel, callback) {
-  const props = ["width", "height", "top", "left"];
-  let done = false;
-  let settleTimer;
-  const finish = () => {
-    if (done) return;
-    done = true;
-    panel.removeEventListener("transitionend", onEnd);
-    clearTimeout(settleTimer);
-    clearTimeout(fallback);
-    callback();
-  };
-  const onEnd = (event) => {
-    if (!props.includes(event.propertyName)) return;
-    clearTimeout(settleTimer);
-    settleTimer = setTimeout(finish, 36);
-  };
-  const fallback = setTimeout(finish, 460);
-  panel.addEventListener("transitionend", onEnd);
-}
-
-function syncCategoryFocusPanel({ animate = false } = {}) {
-  const category = categoryById(state.expandedCategoryId);
-  const panel = document.getElementById("categoryFocusPanel");
-  const layer = document.getElementById("categoryFocusLayer");
-  if (!category || !panel || !layer) return;
-
-  panel.style.setProperty("--tile-color", category.color);
-  panel.innerHTML = `
-    <div class="category-focus-inner" data-focus-inner>
-      ${categoryTileContent(category, true)}
-    </div>
-  `;
-
-  layer.classList.add("is-open");
-  layer.setAttribute("aria-hidden", "false");
-
-  if (animate && state.categoryExpandRect) {
-    applyFocusPanelRect(panel, state.categoryExpandRect);
-    panel.classList.remove("is-expanded");
-    bindFocusScaleObserver(panel);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        applyFocusPanelRect(panel, computeExpandedFocusRect());
-        panel.classList.add("is-expanded");
-        afterPanelExpandAnimation(panel, () => {
-          applyFocusTrackerScale(panel);
-        });
-      });
-    });
-    return;
-  }
-
-  applyFocusPanelRect(panel, computeExpandedFocusRect());
-  panel.classList.add("is-expanded");
-  bindFocusScaleObserver(panel);
-  scheduleFocusTrackerScale(panel);
-}
-
-function collapseCategoryPanel(animated = true) {
-  const panel = document.getElementById("categoryFocusPanel");
-  const layer = document.getElementById("categoryFocusLayer");
-  if (!panel || !layer || !state.expandedCategoryId) {
-    disconnectFocusScaleObserver();
-    state.expandedCategoryId = null;
-    state.categoryExpandRect = null;
-    state.categoryExpandMetrics = null;
-    renderToday();
-    return;
-  }
-
-  const finish = () => {
-    disconnectFocusScaleObserver();
-    state.expandedCategoryId = null;
-    state.categoryExpandRect = null;
-    state.categoryExpandMetrics = null;
-    panel.classList.remove("is-expanded");
-    layer.classList.remove("is-open");
-    layer.setAttribute("aria-hidden", "true");
-    renderToday();
-  };
-
-  if (!animated || !state.categoryExpandRect) {
-    finish();
-    return;
-  }
-
-  panel.classList.remove("is-expanded");
-  applyFocusPanelRect(panel, state.categoryExpandRect);
-
-  let done = false;
-  const onEnd = () => {
-    if (done) return;
-    done = true;
-    panel.removeEventListener("transitionend", onEnd);
-    clearTimeout(fallback);
-    finish();
-  };
-  const fallback = setTimeout(onEnd, 420);
-  panel.addEventListener("transitionend", onEnd);
-}
-
-function expandCategory(categoryId) {
-  if (state.expandedCategoryId === categoryId) {
-    collapseCategoryPanel();
-    return;
-  }
-  if (state.expandedCategoryId) {
-    state.expandedCategoryId = null;
-    state.categoryExpandRect = null;
-    state.categoryExpandMetrics = null;
-    renderToday();
-  }
-  const tile = appEl.querySelector(`[data-category-id="${categoryId}"]`);
-  if (!tile || tile.classList.contains("is-source-hidden")) return;
-  const rect = tile.getBoundingClientRect();
-  state.expandedCategoryId = categoryId;
-  state.categoryExpandMetrics = capturePreviewGridMetrics(tile) || {
-    frameW: rect.width,
-    frameH: rect.height * 0.65,
-    cols: 2,
-    gap: PREVIEW_CHIP_GAP,
-    previewCell: PREVIEW_CHIP_MIN,
-    previewFont: 10,
-  };
-  state.categoryExpandRect = {
-    top: rect.top,
-    left: rect.left,
-    width: rect.width,
-    height: rect.height,
-  };
-  renderToday();
-  syncCategoryFocusPanel({ animate: true });
 }
 
 function renderToday() {
@@ -764,20 +495,15 @@ function renderToday() {
   const dayLabel = isSelectedToday() ? "vandaag" : "op deze dag";
   const cats = [...state.categories].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
   const { cols, rows } = categoryGridLayout(Math.max(cats.length, 1));
-  const stageDimmed = Boolean(state.expandedCategoryId);
   appEl.classList.add("app--tiles");
   appEl.innerHTML = `
     ${todayBarHtml(day, dayItems, dayLabel)}
     <div class="category-stage-wrap">
       <div
-        class="category-stage ${stageDimmed ? "is-dimmed" : ""}"
+        class="category-stage"
         style="grid-template-columns:repeat(${cols},minmax(0,1fr));grid-template-rows:repeat(${rows},minmax(0,1fr))"
       >
         ${cats.length ? cats.map(categoryTile).join("") : `<p class="empty">Nog geen categorieën. Voeg ze toe onder Trackers.</p>`}
-      </div>
-      <div class="category-focus-layer" id="categoryFocusLayer" aria-hidden="true">
-        <button type="button" class="category-focus-backdrop" data-action="collapse-category" aria-label="Sluit categorie"></button>
-        <article class="category-focus-panel" id="categoryFocusPanel" style="--tile-color:#6366f1"></article>
       </div>
     </div>
   `;
@@ -1539,19 +1265,8 @@ async function quickCheck(tracker) {
 }
 
 appEl.addEventListener("click", async (event) => {
-  if (event.target.closest("[data-focus-inner]")) {
-    event.stopPropagation();
-  }
-  const t = event.target.closest("[data-open-tracker],[data-expand-category],[data-quick],[data-action],[data-cal-range],[data-cal-filter],[data-stats-range],[data-day],[data-edit-tracker],[data-edit-category]");
+  const t = event.target.closest("[data-open-tracker],[data-quick],[data-action],[data-cal-range],[data-cal-filter],[data-stats-range],[data-day],[data-edit-tracker],[data-edit-category]");
   if (!t) return;
-  if (t.dataset.expandCategory) {
-    expandCategory(t.dataset.expandCategory);
-    return;
-  }
-  if (t.dataset.action === "collapse-category") {
-    collapseCategoryPanel();
-    return;
-  }
   if (t.dataset.quick === "counter") {
     event.stopPropagation();
     const tracker = trackerById(t.dataset.id);
@@ -1587,16 +1302,10 @@ appEl.addEventListener("click", async (event) => {
   if (t.dataset.action === "new-tracker") openSheet(trackerForm());
   if (t.dataset.action === "open-log") openSheet(todayLogSheet());
   if (t.dataset.action === "day-prev") {
-    state.expandedCategoryId = null;
-    state.categoryExpandRect = null;
-    state.categoryExpandMetrics = null;
     state.selectedDay = localISODate(addDays(selectedDayDate(), -1));
     render();
   }
   if (t.dataset.action === "day-next") {
-    state.expandedCategoryId = null;
-    state.categoryExpandRect = null;
-    state.categoryExpandMetrics = null;
     state.selectedDay = localISODate(addDays(selectedDayDate(), 1));
     render();
   }
