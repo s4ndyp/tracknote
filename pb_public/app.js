@@ -36,7 +36,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.12";
+const APP_VERSION = "1.0.13";
 
 const appEl = document.getElementById("app");
 const sheetEl = document.getElementById("sheet");
