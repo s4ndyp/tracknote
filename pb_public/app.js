@@ -36,7 +36,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.13";
+const APP_VERSION = "1.0.14";
 
 const appEl = document.getElementById("app");
 const sheetEl = document.getElementById("sheet");
@@ -301,8 +301,11 @@ function setView(view) {
 }
 
 async function refresh(rangeDays = 400) {
-  state.loading = true;
-  render();
+  const showLoadingScreen = !state.trackers.length;
+  if (showLoadingScreen) {
+    state.loading = true;
+    render();
+  }
   try {
     await loadCategories();
     await loadTrackers();
@@ -459,16 +462,22 @@ function categoryTrackerChip(tracker, interactive) {
   return trackerChipHtml(tracker, { interactive, day: selectedDayDate() });
 }
 
+function categoryTrackerGridRows(trackerCount) {
+  if (trackerCount <= 0) return 1;
+  return Math.max(1, Math.ceil(trackerCount / 2));
+}
+
 function categoryTileContent(category) {
   const day = selectedDayDate();
   const trackers = trackersInCategory(category.id);
+  const gridRows = categoryTrackerGridRows(trackers.length);
   return `
     <span class="category-tile-head">
       <span class="category-tile-name">${escapeHtml(category.name)}</span>
       <span class="category-tile-meta">${escapeHtml(categoryStatusText(category.id, day))}</span>
     </span>
     <span class="category-tile-frame">
-      <span class="tracker-chip-grid tracker-chip-grid--category">
+      <span class="tracker-chip-grid tracker-chip-grid--category" style="--tracker-rows:${gridRows}">
         ${trackers.length
           ? trackers.map((t) => categoryTrackerChip(t, true)).join("")
           : `<span class="category-tile-empty">Geen trackers</span>`}

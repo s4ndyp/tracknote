@@ -32,6 +32,7 @@ body {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  overscroll-behavior-y: contain;
 }
 
 button, input, select, textarea {
@@ -206,7 +207,6 @@ body.view-today .app.app--tiles {
 .category-tile-frame {
   flex: 1;
   min-height: 0;
-  container-type: size;
   border-radius: var(--radius);
   border: 1px solid color-mix(in srgb, var(--tile-color) 38%, var(--line));
   background:
@@ -231,10 +231,10 @@ body.view-today .app.app--tiles {
   height: 100%;
   min-height: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(var(--tracker-rows, 1), minmax(0, 1fr));
   grid-auto-rows: minmax(0, 1fr);
   column-gap: clamp(6px, 1.5vw, 10px);
-  row-gap: clamp(2px, 0.5vw, 4px);
+  row-gap: 3px;
   align-content: stretch;
   justify-content: stretch;
   place-content: stretch;
@@ -244,16 +244,16 @@ body.view-today .app.app--tiles {
 
 .tracker-chip-grid--category > .tracker-chip {
   place-self: center;
-  width: min(calc(50cqw - 6px), calc(33.33cqh - 6px));
-  aspect-ratio: 1;
-  height: auto;
+  width: auto;
+  height: 100%;
   max-width: 100%;
-  border-radius: clamp(10px, 2.5cqw, 14px);
-  padding: clamp(5px, 1.2cqw, 8px);
+  aspect-ratio: 1;
+  border-radius: clamp(10px, 2.4vw, 14px);
+  padding: clamp(4px, 1vw, 7px);
 }
 
 .tracker-chip-grid--category > .tracker-chip .tracker-chip-label {
-  font-size: clamp(10px, 3.2cqw, 14px);
+  font-size: clamp(10px, 2.6vw, 13px);
   -webkit-line-clamp: 4;
 }
 
