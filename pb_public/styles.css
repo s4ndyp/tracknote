@@ -207,6 +207,7 @@ body.view-today .app.app--tiles {
 .category-tile-frame {
   flex: 1;
   min-height: 0;
+  container-type: size;
   border-radius: var(--radius);
   border: 1px solid color-mix(in srgb, var(--tile-color) 38%, var(--line));
   background:
@@ -227,33 +228,36 @@ body.view-today .app.app--tiles {
 }
 
 .tracker-chip-grid.tracker-chip-grid--category {
+  --chip-column-gap: clamp(6px, 1.5vw, 10px);
+  --chip-row-gap: 2px;
   width: 100%;
   height: 100%;
   min-height: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(var(--tracker-rows, 1), minmax(0, 1fr));
-  grid-auto-rows: minmax(0, 1fr);
-  column-gap: clamp(6px, 1.5vw, 10px);
-  row-gap: 3px;
-  align-content: stretch;
-  justify-content: stretch;
-  place-content: stretch;
+  grid-auto-rows: auto;
+  column-gap: var(--chip-column-gap);
+  row-gap: var(--chip-row-gap);
+  align-content: start;
+  justify-content: center;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
 
 .tracker-chip-grid--category > .tracker-chip {
   place-self: center;
-  width: auto;
-  height: 100%;
-  max-width: 100%;
+  width: min(
+    calc((100cqw - var(--chip-column-gap)) / 2),
+    calc((100cqh - 2 * var(--chip-row-gap)) / 3)
+  );
+  height: auto;
   aspect-ratio: 1;
+  max-width: 100%;
   border-radius: clamp(10px, 2.4vw, 14px);
   padding: clamp(4px, 1vw, 7px);
 }
 
 .tracker-chip-grid--category > .tracker-chip .tracker-chip-label {
-  font-size: clamp(10px, 2.6vw, 13px);
+  font-size: clamp(10px, 2.6cqw, 13px);
   -webkit-line-clamp: 4;
 }
 
