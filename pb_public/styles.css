@@ -583,19 +583,51 @@ body.view-today .app.app--tiles {
   margin-bottom: 4px;
 }
 
-.stats-list-intro {
-  margin: 0 0 4px;
+.stats-tracker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.stats-tracker-list .tracker-card {
-  cursor: pointer;
+.stats-tracker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  text-align: left;
+  color: var(--text);
 }
 
-.stats-tracker-list .plus {
-  background: transparent;
-  color: var(--muted);
-  font-size: 22px;
-  font-weight: 400;
+.stats-tracker-row:hover,
+.stats-tracker-row:focus-visible {
+  background: var(--card-hover);
+}
+
+.stats-tracker-row-dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+}
+
+.stats-tracker-row-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-tracker-row-chevron {
+  flex-shrink: 0;
+  color: var(--dim);
+  font-size: 18px;
+  line-height: 1;
 }
 
 .period-toolbar {
