@@ -34,7 +34,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.17";
+const APP_VERSION = "1.0.18";
 
 const appEl = document.getElementById("app");
 const sheetEl = document.getElementById("sheet");
@@ -291,6 +291,9 @@ function setView(view) {
   state.view = view;
   if (view === "today") {
     state.selectedDay = localISODate(new Date());
+  }
+  if (view === "stats") {
+    state.statsTrackerId = null;
   }
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.classList.toggle("is-active", tab.dataset.view === view);
@@ -748,16 +751,16 @@ function statsPeriodBounds() {
 }
 
 function statsTrackerListItem(tracker) {
-  const summary = summaryFor(tracker, new Date());
-  const cat = tracker.category ? categoryById(tracker.category) : overigCategory();
   return `
-    <button type="button" class="card tracker-card" data-stats-tracker="${tracker.id}">
-      <span class="swatch" style="background:${escapeHtml(tracker.color)}" aria-hidden="true">◔</span>
-      <span class="meta">
-        <h3>${escapeHtml(tracker.name)}</h3>
-        <p class="hint">${escapeHtml(cat?.name || "Overig")} · vandaag: ${escapeHtml(summary)}</p>
-      </span>
-      <span class="plus" aria-hidden="true">›</span>
+    <button
+      type="button"
+      class="stats-tracker-row"
+      data-action="stats-open"
+      data-tracker-id="${escapeHtml(tracker.id)}"
+    >
+      <i class="dot stats-tracker-row-dot" style="background:${escapeHtml(tracker.color)}"></i>
+      <span class="stats-tracker-row-name">${escapeHtml(tracker.name)}</span>
+      <span class="stats-tracker-row-chevron" aria-hidden="true">›</span>
     </button>
   `;
 }
@@ -769,8 +772,7 @@ function renderStats() {
   if (!state.statsTrackerId) {
     appEl.innerHTML = `
       <div class="view-body view-body--stats">
-        <p class="hint stats-list-intro">Kies een tracker voor kalender en statistieken.</p>
-        <div class="grid tracker-grid stats-tracker-list">
+        <div class="stats-tracker-list" role="list">
           ${active.length
             ? active.map((t) => statsTrackerListItem(t)).join("")
             : `<p class="empty">Nog geen actieve trackers.</p>`}
@@ -1309,8 +1311,8 @@ appEl.addEventListener("click", async (event) => {
     state.selectedDay = localISODate(addDays(selectedDayDate(), 1));
     render();
   }
-  if (t.dataset.statsTracker) {
-    state.statsTrackerId = t.dataset.statsTracker;
+  if (t.dataset.action === "stats-open") {
+    state.statsTrackerId = t.dataset.trackerId || null;
     render();
     return;
   }
@@ -1436,7 +1438,12 @@ document.querySelector(".tabbar").addEventListener("click", (event) => {
   if (tab) setView(tab.dataset.view);
 });
 
-document.getElementById("refreshBtn").addEventListener("click", () => refresh());
+document.getElementById("refreshBtn").addEventListener("click", () => {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.getRegistration().then((reg) => reg?.update()).catch(() => {});
+  }
+  refresh();
+});
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
@@ -1445,7 +1452,7 @@ function registerServiceWorker() {
     window.location.hostname === "localhost" ||
     window.location.hostname === "127.0.0.1";
   if (!secure) return;
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  navigator.serviceWorker.register(`/sw.js?v=${APP_VERSION}`).catch(() => {});
 }
 
 registerServiceWorker();
