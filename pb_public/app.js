@@ -34,7 +34,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.18";
+const APP_VERSION = "1.0.19";
 
 const appEl = document.getElementById("app");
 const sheetEl = document.getElementById("sheet");
@@ -810,93 +810,182 @@ function renderStats() {
     </div>
     <div class="view-body view-body--stats">
       ${statsCalendarSection(tracker)}
-      <div class="grid stats-grid">
-        <section class="card">
-          <p class="hint">Logs in periode</p>
-          <p class="stat-value">${entries.length}</p>
-        </section>
-        <section class="card">
-          <p class="hint">Actieve dagen</p>
-          <p class="stat-value">${new Set(entries.map((e) => localISODate(parsePbDate(e.logged_at)))).size}</p>
-        </section>
-      </div>
-      ${trackerStats(tracker, entries)}
+      ${trackerStats(tracker, entries, from, to)}
     </div>
   `;
 }
 
-function streakFor(tracker) {
-  const daysWith = new Set(
-    state.entries
-      .filter((e) => e.tracker === tracker.id)
-      .map((e) => localISODate(parsePbDate(e.logged_at)))
-  );
-  let streak = 0;
-  let cursor = startOfDay(new Date());
-  if (!daysWith.has(localISODate(cursor))) cursor = addDays(cursor, -1);
-  while (daysWith.has(localISODate(cursor))) {
-    streak += 1;
-    cursor = addDays(cursor, -1);
+function eachDayInRange(from, to) {
+  const days = [];
+  let cursor = startOfDay(from);
+  const end = startOfDay(to);
+  while (cursor <= end) {
+    days.push(new Date(cursor));
+    cursor = addDays(cursor, 1);
   }
-  return streak;
+  return days;
 }
 
-function trackerStats(tracker, items) {
-  const headHtml = `
-    <div class="row stats-tracker-head" style="justify-content:space-between;align-items:center">
+function logsPerDaySeries(items, from, to) {
+  const days = eachDayInRange(from, to);
+  const counts = new Map(days.map((d) => [localISODate(d), 0]));
+  items.forEach((entry) => {
+    const key = localISODate(parsePbDate(entry.logged_at));
+    if (counts.has(key)) counts.set(key, counts.get(key) + 1);
+  });
+  return days.map((date) => ({
+    date,
+    count: counts.get(localISODate(date)) || 0,
+  }));
+}
+
+function chartAxisTicks(series) {
+  const n = series.length;
+  if (n <= 1) return [{ index: 0, label: formatDayShort(series[0].date) }];
+  const maxLabels = n <= 10 ? n : n <= 45 ? 7 : 6;
+  const step = Math.max(1, Math.round((n - 1) / (maxLabels - 1)));
+  const ticks = [];
+  for (let i = 0; i < n; i += step) {
+    const point = series[i];
+    let label;
+    if (n > 120) {
+      label = point.date.toLocaleDateString("nl-NL", { month: "short" });
+    } else if (n > 45) {
+      label = `${point.date.getDate()}/${point.date.getMonth() + 1}`;
+    } else {
+      label = String(point.date.getDate());
+    }
+    ticks.push({ index: i, label });
+  }
+  const lastIndex = n - 1;
+  if (ticks[ticks.length - 1]?.index !== lastIndex) {
+    const last = series[lastIndex];
+    ticks.push({
+      index: lastIndex,
+      label: n > 45 ? formatDayShort(last.date) : String(last.date.getDate()),
+    });
+  }
+  return ticks;
+}
+
+function statLineChartHtml(series, color) {
+  if (!series.length) {
+    return `<p class="empty stat-chart-empty">Geen dagen in deze periode.</p>`;
+  }
+  const width = 360;
+  const height = 132;
+  const pad = { left: 4, right: 4, top: 10, bottom: 22 };
+  const innerW = width - pad.left - pad.right;
+  const innerH = height - pad.top - pad.bottom;
+  const maxCount = Math.max(1, ...series.map((p) => p.count));
+  const coords = series.map((point, index) => {
+    const x = pad.left + (series.length <= 1 ? innerW / 2 : (index / (series.length - 1)) * innerW);
+    const y = pad.top + innerH - (point.count / maxCount) * innerH;
+    return { x, y, point };
+  });
+  const linePoints = coords.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(" ");
+  const areaPoints = [
+    `${coords[0].x.toFixed(1)},${(pad.top + innerH).toFixed(1)}`,
+    ...coords.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`),
+    `${coords[coords.length - 1].x.toFixed(1)},${(pad.top + innerH).toFixed(1)}`,
+  ].join(" ");
+  const ticks = chartAxisTicks(series);
+  const axisLabels = ticks.map(({ index, label }) => {
+    const x = pad.left + (series.length <= 1 ? innerW / 2 : (index / (series.length - 1)) * innerW);
+    return `<text class="stat-chart-axis-label" x="${x.toFixed(1)}" y="${height - 4}" text-anchor="middle">${escapeHtml(label)}</text>`;
+  }).join("");
+  const stroke = color || "#64748b";
+  return `
+    <svg class="stat-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Lijngrafiek logs per dag">
+      <line class="stat-chart-grid" x1="${pad.left}" y1="${pad.top + innerH}" x2="${width - pad.right}" y2="${pad.top + innerH}" />
+      <polygon class="stat-chart-area" points="${areaPoints}" style="--chart-color:${escapeHtml(stroke)}" />
+      <polyline class="stat-chart-line" points="${linePoints}" style="--chart-color:${escapeHtml(stroke)}" />
+      ${coords.map((c) => `
+        <circle class="stat-chart-dot" cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="2.5" style="--chart-color:${escapeHtml(stroke)}">
+          <title>${escapeHtml(formatDayShort(c.point.date))}: ${c.point.count} log${c.point.count === 1 ? "" : "s"}</title>
+        </circle>
+      `).join("")}
+      ${axisLabels}
+    </svg>
+  `;
+}
+
+function trackerStatsHead(tracker) {
+  return `
+    <div class="stats-tracker-head">
       <span class="tracker-chip tracker-chip--preview tracker-chip--stat" style="--chip-color:${escapeHtml(tracker.color)}">
         <span class="tracker-chip-label">${escapeHtml(trackerChipLabel(tracker.name))}</span>
       </span>
-      <span class="hint">reeks ${streakFor(tracker)}d</span>
     </div>
   `;
+}
 
-  if (tracker.type === "choice") {
-    const configured = optionsOf(tracker).choices || [];
-    const choiceCounts = {};
-    configured.forEach((label) => { choiceCounts[label] = 0; });
-    items.forEach((e) => {
-      const key = e.value_text || "—";
-      choiceCounts[key] = (choiceCounts[key] || 0) + 1;
-    });
-    const labels = [...new Set([...configured, ...Object.keys(choiceCounts)])];
-    const maxChoice = Math.max(1, ...labels.map((label) => choiceCounts[label] || 0));
-    const colors = choiceColorsForTracker(tracker);
-    const rows = labels.map((label) => {
-      const count = choiceCounts[label] || 0;
-      const color = colors.get(label) || colorForChoiceValue(tracker, label);
-      return `
-        <div class="stat-choice-row">
-          <span class="stat-choice-label hint">${escapeHtml(label)}</span>
-          <div class="bar stat-choice-bar"><span style="width:${Math.round((count / maxChoice) * 100)}%;background:${escapeHtml(color)}"></span></div>
-          <span class="stat-choice-count hint">${count}×</span>
-        </div>
-      `;
-    }).join("");
+function trackerValueDistribution(tracker, items) {
+  const configured = tracker.type === "choice" ? (optionsOf(tracker).choices || []) : [];
+  const valueCounts = {};
+  configured.forEach((label) => { valueCounts[label] = 0; });
+  items.forEach((entry) => {
+    const key = String(entry.value_text || "—").trim() || "—";
+    valueCounts[key] = (valueCounts[key] || 0) + 1;
+  });
+  const labels = tracker.type === "choice"
+    ? [...new Set([...configured, ...Object.keys(valueCounts)])]
+    : Object.keys(valueCounts).sort((a, b) => (valueCounts[b] || 0) - (valueCounts[a] || 0) || a.localeCompare(b));
+  if (!labels.length) return "";
+  const maxCount = Math.max(1, ...labels.map((label) => valueCounts[label] || 0));
+  const colors = choiceColorsForTracker(tracker);
+  const rows = labels.map((label) => {
+    const count = valueCounts[label] || 0;
+    const barColor = tracker.type === "choice"
+      ? (colors.get(label) || colorForChoiceValue(tracker, label))
+      : tracker.color;
     return `
-      <section class="card stat-tracker-card">
-        ${headHtml}
-        <p class="stat-value">${items.length}<span class="hint" style="font-size:14px;font-weight:600"> logs</span></p>
-        <div class="stat-choice-rows">${rows}</div>
-      </section>
+      <div class="stat-choice-row">
+        <span class="stat-choice-label hint">${escapeHtml(label)}</span>
+        <div class="bar stat-choice-bar"><span style="width:${Math.round((count / maxCount) * 100)}%;background:${escapeHtml(barColor)}"></span></div>
+        <span class="stat-choice-count hint">${count}×</span>
+      </div>
     `;
-  }
+  }).join("");
+  return `
+    <div class="stat-section">
+      <p class="hint stat-section-label">Verdeling per keuze</p>
+      <div class="stat-choice-rows">${rows}</div>
+    </div>
+  `;
+}
 
-  const total = tracker.type === "counter" || tracker.type === "number" || tracker.type === "scale"
-    ? items.reduce((sum, e) => sum + Number(e.value_number || 0), 0)
-    : items.length;
-  const avg = items.length && (tracker.type === "number" || tracker.type === "scale")
-    ? (total / items.length).toFixed(1)
-    : null;
-  const max = Math.max(1, ...state.trackers.map((t) => {
-    const list = state.entries.filter((e) => e.tracker === t.id);
-    return list.length;
-  }));
+function trackerTypeSummaryHtml(tracker, items) {
+  if (!items.length) return "";
+  if (tracker.type === "check") {
+    return `<p class="hint stat-type-summary">${items.length}× ingevuld in deze periode</p>`;
+  }
+  if (tracker.type === "counter" || tracker.type === "number" || tracker.type === "scale") {
+    const total = items.reduce((sum, e) => sum + Number(e.value_number || 0), 0);
+    if (tracker.type === "number" || tracker.type === "scale") {
+      const avg = (total / items.length).toFixed(1);
+      const unit = tracker.unit ? ` ${tracker.unit}` : "";
+      return `<p class="stat-value stat-type-summary">gem. ${avg}${escapeHtml(unit)}</p>`;
+    }
+    const unit = tracker.unit ? ` ${escapeHtml(tracker.unit)}` : "";
+    return `<p class="stat-value stat-type-summary">${total}${unit}</p>`;
+  }
+  return "";
+}
+
+function trackerStats(tracker, items, from, to) {
+  const series = logsPerDaySeries(items, from, to);
+  const distributionHtml = (tracker.type === "choice" || tracker.type === "text")
+    ? trackerValueDistribution(tracker, items)
+    : trackerTypeSummaryHtml(tracker, items);
   return `
     <section class="card stat-tracker-card">
-      ${headHtml}
-      <p class="stat-value">${avg ? `gem. ${avg}` : total}${tracker.unit && !avg ? ` ${escapeHtml(tracker.unit)}` : ""}</p>
-      <div class="bar"><span style="width:${Math.round((items.length / max) * 100)}%;background:${tracker.color}"></span></div>
+      ${trackerStatsHead(tracker)}
+      <div class="stat-section">
+        <p class="hint stat-section-label">Logs per dag</p>
+        ${statLineChartHtml(series, tracker.color)}
+      </div>
+      ${distributionHtml}
     </section>
   `;
 }
