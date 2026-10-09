@@ -34,7 +34,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.20";
+const APP_VERSION = "1.0.21";
 
 const appEl = document.getElementById("app");
 const sheetEl = document.getElementById("sheet");
@@ -1033,6 +1033,230 @@ function trackerValueDistribution(tracker, items) {
   `;
 }
 
+function entriesForTrackerInPeriod(trackerId, from, to) {
+  return state.entries.filter((entry) => {
+    if (entry.tracker !== trackerId) return false;
+    const logged = parsePbDate(entry.logged_at);
+    return logged >= from && logged <= to;
+  });
+}
+
+function previousPeriodBounds(from, to) {
+  const days = eachDayInRange(from, to);
+  const span = days.length;
+  const prevEnd = endOfDay(addDays(startOfDay(from), -1));
+  const prevStart = startOfDay(addDays(prevEnd, -(span - 1)));
+  return { from: prevStart, to: prevEnd };
+}
+
+function weekdayIndex(date) {
+  return (date.getDay() + 6) % 7;
+}
+
+function formatStatNumber(value, decimals = 1) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  const rounded = decimals === 0 ? Math.round(value) : Number(value.toFixed(decimals));
+  return String(rounded).replace(".", ",");
+}
+
+function median(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2) return sorted[mid];
+  return (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function dailyTotalsForTracker(tracker, items, from, to) {
+  const days = eachDayInRange(from, to);
+  const totals = new Map(days.map((d) => [localISODate(d), 0]));
+  items.forEach((entry) => {
+    const key = localISODate(parsePbDate(entry.logged_at));
+    if (!totals.has(key)) return;
+    const add = Number(entry.value_number ?? (tracker.type === "counter" ? 1 : 0));
+    totals.set(key, totals.get(key) + (Number.isNaN(add) ? 0 : add));
+  });
+  return days.map((date) => totals.get(localISODate(date)) || 0);
+}
+
+function logNumericValues(tracker, items) {
+  return items
+    .map((entry) => Number(entry.value_number))
+    .filter((value) => !Number.isNaN(value));
+}
+
+function minMaxMedianValues(tracker, items, from, to) {
+  if (tracker.type === "counter") {
+    return dailyTotalsForTracker(tracker, items, from, to);
+  }
+  if (tracker.type === "number" || tracker.type === "scale") {
+    return logNumericValues(tracker, items);
+  }
+  return [];
+}
+
+function statUnitSuffix(tracker, spaced = true) {
+  if (!tracker.unit) return "";
+  return `${spaced ? " " : ""}${tracker.unit}`;
+}
+
+function statMinMaxMedianHtml(tracker, items, from, to) {
+  if (!["counter", "number", "scale"].includes(tracker.type)) return "";
+  const values = minMaxMedianValues(tracker, items, from, to);
+  if (!values.length) return "";
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const med = median(values);
+  const unit = escapeHtml(statUnitSuffix(tracker));
+  const perDayHint = tracker.type === "counter"
+    ? `<p class="hint stat-minmax-note">Per dag in deze periode (inclusief dagen zonder log)</p>`
+    : tracker.type === "number" || tracker.type === "scale"
+      ? `<p class="hint stat-minmax-note">Per log in deze periode</p>`
+      : "";
+  return `
+    <div class="stat-section">
+      <p class="hint stat-section-label">Min · max · mediaan</p>
+      ${perDayHint}
+      <div class="stat-metrics-grid">
+        <div class="stat-metric-card">
+          <p class="hint">Min</p>
+          <p class="stat-metric-value">${formatStatNumber(min, tracker.type === "counter" ? 0 : 1)}${unit}</p>
+        </div>
+        <div class="stat-metric-card">
+          <p class="hint">Max</p>
+          <p class="stat-metric-value">${formatStatNumber(max, tracker.type === "counter" ? 0 : 1)}${unit}</p>
+        </div>
+        <div class="stat-metric-card">
+          <p class="hint">Mediaan</p>
+          <p class="stat-metric-value">${formatStatNumber(med, tracker.type === "counter" ? 0 : 1)}${unit}</p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function trendMetricValue(tracker, items, from, to) {
+  if (tracker.type === "counter") {
+    return items.reduce((sum, entry) => sum + Number(entry.value_number || 1), 0);
+  }
+  if (tracker.type === "number" || tracker.type === "scale") {
+    const values = logNumericValues(tracker, items);
+    if (!values.length) return null;
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  }
+  if (tracker.type === "check") {
+    return new Set(items.map((entry) => localISODate(parsePbDate(entry.logged_at)))).size;
+  }
+  return items.length;
+}
+
+function trendMetricLabel(tracker) {
+  if (tracker.type === "counter") return "totaal in periode";
+  if (tracker.type === "number" || tracker.type === "scale") return "gemiddelde waarde";
+  if (tracker.type === "check") return "actieve dagen";
+  return "aantal logs";
+}
+
+function formatTrendDelta(tracker, diff) {
+  const abs = Math.abs(diff);
+  if (tracker.type === "counter") {
+    return `${diff > 0 ? "+" : diff < 0 ? "−" : ""}${formatStatNumber(abs, 0)}${escapeHtml(statUnitSuffix(tracker))}`;
+  }
+  if (tracker.type === "number" || tracker.type === "scale") {
+    return `${diff > 0 ? "+" : diff < 0 ? "−" : ""}${formatStatNumber(abs, 1)}${escapeHtml(statUnitSuffix(tracker))}`;
+  }
+  if (tracker.type === "check") {
+    return `${diff > 0 ? "+" : diff < 0 ? "−" : ""}${formatStatNumber(abs, 0)} dagen`;
+  }
+  return `${diff > 0 ? "+" : diff < 0 ? "−" : ""}${formatStatNumber(abs, 0)} logs`;
+}
+
+function statTrendHtml(tracker, items, from, to) {
+  const prev = previousPeriodBounds(from, to);
+  const prevItems = entriesForTrackerInPeriod(tracker.id, prev.from, prev.to);
+  const current = trendMetricValue(tracker, items, from, to);
+  const previous = trendMetricValue(tracker, prevItems, prev.from, prev.to);
+  if (current === null && previous === null) return "";
+  const cur = current ?? 0;
+  const prevVal = previous ?? 0;
+  const diff = cur - prevVal;
+  let pct = 0;
+  if (prevVal !== 0) pct = Math.round((diff / prevVal) * 100);
+  else if (cur !== 0) pct = 100;
+  const arrow = diff > 0 ? "↑" : diff < 0 ? "↓" : "→";
+  const trendClass = diff > 0 ? "stat-trend-up" : diff < 0 ? "stat-trend-down" : "stat-trend-flat";
+  const pctLabel = prevVal === 0 && cur === 0
+    ? "geen verschil"
+    : `${pct > 0 ? "+" : ""}${pct}% t.o.v. vorige periode`;
+  return `
+    <div class="stat-section">
+      <p class="hint stat-section-label">Trend</p>
+      <p class="stat-trend ${trendClass}">
+        <span class="stat-trend-arrow" aria-hidden="true">${arrow}</span>
+        <span>${formatTrendDelta(tracker, diff)} · ${pctLabel}</span>
+      </p>
+      <p class="hint stat-trend-caption">Vergelijking op basis van ${escapeHtml(trendMetricLabel(tracker))}</p>
+    </div>
+  `;
+}
+
+function weekdayMetricForDay(tracker, dayItems) {
+  if (tracker.type === "counter" || tracker.type === "number" || tracker.type === "scale") {
+    return dayItems.reduce(
+      (sum, entry) => sum + Number(entry.value_number ?? (tracker.type === "counter" ? 1 : 0)),
+      0
+    );
+  }
+  if (tracker.type === "check") return dayItems.length > 0 ? 1 : 0;
+  return dayItems.length;
+}
+
+function weekdayHeatmapSeries(tracker, items, from, to) {
+  const buckets = Array.from({ length: 7 }, () => []);
+  eachDayInRange(from, to).forEach((date) => {
+    const key = localISODate(date);
+    const dayItems = items.filter((entry) => localISODate(parsePbDate(entry.logged_at)) === key);
+    buckets[weekdayIndex(date)].push(weekdayMetricForDay(tracker, dayItems));
+  });
+  return DOW.map((label, index) => {
+    const values = buckets[index];
+    const avg = values.length
+      ? values.reduce((sum, value) => sum + value, 0) / values.length
+      : 0;
+    return { label, avg };
+  });
+}
+
+function weekdayHeatmapCaption(tracker) {
+  if (tracker.type === "counter") return "Gemiddeld totaal per dag (incl. dagen zonder log)";
+  if (tracker.type === "number" || tracker.type === "scale") return "Gemiddeld totaal per kalenderdag in deze periode";
+  if (tracker.type === "check") return "Gemiddeld aantal ingevulde dagen per weekdag (0–1)";
+  return "Gemiddeld aantal logs per kalenderdag";
+}
+
+function statWeekdayHeatmapHtml(tracker, items, from, to) {
+  const series = weekdayHeatmapSeries(tracker, items, from, to);
+  const maxAvg = Math.max(0.001, ...series.map((point) => point.avg));
+  const decimals = tracker.type === "check" ? 0 : tracker.type === "counter" ? 1 : 1;
+  const cells = series.map((point) => {
+    const heat = point.avg / maxAvg;
+    const title = `${point.label}: gem. ${formatStatNumber(point.avg, decimals)}${statUnitSuffix(tracker, false)}`;
+    return `
+      <div class="stat-weekday-cell" style="--heat:${heat.toFixed(3)}" title="${escapeHtml(title)}">
+        <span class="stat-weekday-dow">${point.label}</span>
+        <span class="stat-weekday-val">${formatStatNumber(point.avg, decimals)}</span>
+      </div>
+    `;
+  }).join("");
+  return `
+    <div class="stat-section">
+      <p class="hint stat-section-label">Patroon per weekdag</p>
+      <div class="stat-weekday-heatmap" role="list">${cells}</div>
+      <p class="hint stat-weekday-caption">${weekdayHeatmapCaption(tracker)}</p>
+    </div>
+  `;
+}
+
 function trackerTypeSummaryHtml(tracker, items) {
   if (!items.length) return "";
   if (tracker.type === "check") {
@@ -1063,6 +1287,9 @@ function trackerStats(tracker, items, from, to) {
         <p class="hint stat-section-label">Logs per dag</p>
         ${statLineChartHtml(series, tracker.color)}
       </div>
+      ${statMinMaxMedianHtml(tracker, items, from, to)}
+      ${statTrendHtml(tracker, items, from, to)}
+      ${statWeekdayHeatmapHtml(tracker, items, from, to)}
       ${distributionHtml}
     </section>
   `;
