@@ -27,16 +27,14 @@ const state = {
   trackers: [],
   categories: [],
   entries: [],
-  calendarRange: "month",
-  calendarAnchor: localISODate(new Date()),
-  calendarFilterTrackerId: null,
   statsRange: "month",
   statsAnchor: localISODate(new Date()),
+  statsTrackerId: null,
   selectedDay: localISODate(new Date()),
   loading: false,
 };
 
-const APP_VERSION = "1.0.16";
+const APP_VERSION = "1.0.17";
 
 const appEl = document.getElementById("app");
 const sheetEl = document.getElementById("sheet");
@@ -326,7 +324,6 @@ function setAppHeading(label) {
 
 function render() {
   const titles = {
-    calendar: "Kalender",
     stats: "Statistieken",
     trackers: "Trackers",
   };
@@ -334,6 +331,10 @@ function render() {
   if (state.view === "today") {
     todayLabel.textContent = "";
     setAppHeading("Vandaag");
+  } else if (state.view === "stats" && state.statsTrackerId) {
+    todayLabel.textContent = "";
+    const tracker = trackerById(state.statsTrackerId);
+    setAppHeading(tracker?.name || titles.stats);
   } else {
     todayLabel.textContent = formatDayTitle(new Date());
     setAppHeading(titles[state.view] || "Tracknote");
@@ -343,7 +344,6 @@ function render() {
     return;
   }
   if (state.view === "today") renderToday();
-  else if (state.view === "calendar") renderCalendar();
   else if (state.view === "stats") renderStats();
   else renderTrackers();
 }
@@ -519,58 +519,8 @@ function monthMatrix(year, month) {
   return Array.from({ length: 42 }, (_, i) => addDays(start, i));
 }
 
-function renderCalendar() {
-  appEl.classList.remove("app--tiles");
-  const range = state.calendarRange;
-  const anchor = periodAnchorDate("calendar");
-  const months = range === "month" ? 1 : range === "6m" ? 6 : 12;
-  const list = [];
-  for (let i = months - 1; i >= 0; i -= 1) {
-    const d = addMonths(anchor, -i);
-    list.push({ year: d.getFullYear(), month: d.getMonth() });
-  }
-  appEl.innerHTML = `
-    <div class="period-toolbar">
-      ${periodNavHtml("calendar")}
-      <div class="segment" role="tablist">
-        <button data-cal-range="month" class="${range === "month" ? "is-active" : ""}" type="button">Deze maand</button>
-        <button data-cal-range="6m" class="${range === "6m" ? "is-active" : ""}" type="button">6 maanden</button>
-        <button data-cal-range="year" class="${range === "year" ? "is-active" : ""}" type="button">Jaar</button>
-      </div>
-    </div>
-    <div class="legend filters" role="group" aria-label="Filter op tracker">
-      <button type="button" class="filter-chip ${state.calendarFilterTrackerId ? "" : "is-active"}" data-cal-filter="all">Alle</button>
-      ${state.trackers.filter((t) => !t.archived).map((t) => `
-        <button type="button" class="filter-chip ${state.calendarFilterTrackerId === t.id ? "is-active" : ""}" data-cal-filter="${t.id}">
-          <i class="dot" style="background:${t.color}"></i>${escapeHtml(t.name)}
-        </button>
-      `).join("")}
-    </div>
-    ${state.calendarFilterTrackerId ? calendarChoiceLegendHtml(trackerById(state.calendarFilterTrackerId)) : ""}
-    ${state.calendarFilterTrackerId ? calendarFilterHintHtml(trackerById(state.calendarFilterTrackerId)) : ""}
-    <div class="mini-months ${range === "year" ? "year" : ""}">
-      ${list.map(({ year, month }) => calendarMonth(year, month, range === "month")).join("")}
-    </div>
-  `;
-}
-
-function calendarEntriesForDay(date) {
-  let items = entriesForDay(date);
-  if (state.calendarFilterTrackerId) {
-    items = items.filter((e) => e.tracker === state.calendarFilterTrackerId);
-  }
-  return items;
-}
-
-function dotsForDay(date) {
-  const items = calendarEntriesForDay(date);
-  const groups = new Map();
-  items.forEach((entry) => {
-    const tracker = trackerById(entry.tracker);
-    if (!tracker) return;
-    groups.set(tracker.id, tracker.color);
-  });
-  return [...groups.values()].slice(0, 8).map((color) => `<i class="dot" style="background:${color}"></i>`).join("");
+function calendarEntriesForDay(date, trackerId) {
+  return entriesForDay(date).filter((e) => e.tracker === trackerId);
 }
 
 function trackerPaletteOffset(id) {
@@ -653,13 +603,9 @@ function calendarValueLabel(tracker, items, { mini = false } = {}) {
   return `${items.length}×`;
 }
 
-function calendarDayMark(date, mini) {
-  if (!state.calendarFilterTrackerId) {
-    const dots = dotsForDay(date);
-    return dots ? `<span class="dots">${dots}</span>` : `<span class="day-mark day-mark--empty" aria-hidden="true"></span>`;
-  }
-  const items = calendarEntriesForDay(date);
-  const tracker = trackerById(state.calendarFilterTrackerId);
+function calendarDayMark(date, mini, trackerId) {
+  const items = calendarEntriesForDay(date, trackerId);
+  const tracker = trackerById(trackerId);
   if (!items.length || !tracker) {
     return `<span class="day-mark day-mark--empty" aria-hidden="true"></span>`;
   }
@@ -681,30 +627,29 @@ function calendarDayMark(date, mini) {
   `;
 }
 
-function calendarMonth(year, month, large) {
+function calendarMonth(year, month, large, trackerId) {
   const days = monthMatrix(year, month);
   const title = new Date(year, month, 1).toLocaleDateString("nl-NL", { month: "long", year: "numeric" });
   const today = localISODate(new Date());
-  const filterTracker = state.calendarFilterTrackerId ? trackerById(state.calendarFilterTrackerId) : null;
-  const filtered = Boolean(filterTracker);
-  const choiceMode = filterTracker?.type === "choice";
+  const tracker = trackerById(trackerId);
+  const choiceMode = tracker?.type === "choice";
   const mini = !large;
   return `
-    <section class="card ${large ? "" : "mini-cal"} ${filtered ? (choiceMode ? "cal-filtered cal-filtered--choice" : "cal-filtered") : ""}">
+    <section class="card ${large ? "" : "mini-cal"} ${choiceMode ? "cal-filtered cal-filtered--choice" : "cal-filtered"}">
       <h3 style="margin:0 0 10px">${title}</h3>
-      <div class="calendar ${filtered && !choiceMode ? "calendar--filtered" : ""} ${choiceMode ? "calendar--choice-dots" : ""}">
+      <div class="calendar ${!choiceMode ? "calendar--filtered" : ""} ${choiceMode ? "calendar--choice-dots" : ""}">
         ${DOW.map((d) => `<div class="dow">${d}</div>`).join("")}
         ${days.map((day) => {
           const inMonth = day.getMonth() === month;
           const key = localISODate(day);
-          const items = calendarEntriesForDay(day);
-          const dayTitle = filtered && items.length
-            ? `${key}: ${summaryFor(trackerById(state.calendarFilterTrackerId), day)}`
+          const items = calendarEntriesForDay(day, trackerId);
+          const dayTitle = items.length && tracker
+            ? `${key}: ${summaryFor(tracker, day)}`
             : key;
           return `
-            <button class="day ${inMonth ? "" : "is-muted"} ${key === today ? "is-today" : ""} ${filtered && items.length && !choiceMode ? "has-value" : ""}" data-day="${key}" type="button" title="${escapeHtml(dayTitle)}">
+            <button class="day ${inMonth ? "" : "is-muted"} ${key === today ? "is-today" : ""} ${items.length && !choiceMode ? "has-value" : ""}" data-day="${key}" type="button" title="${escapeHtml(dayTitle)}">
               <span class="day-num">${day.getDate()}</span>
-              ${calendarDayMark(day, mini)}
+              ${calendarDayMark(day, mini, trackerId)}
             </button>
           `;
         }).join("")}
@@ -713,23 +658,38 @@ function calendarMonth(year, month, large) {
   `;
 }
 
-function periodAnchorKey(view) {
-  return view === "calendar" ? "calendarAnchor" : "statsAnchor";
+function statsCalendarSection(tracker) {
+  const range = state.statsRange;
+  const anchor = periodAnchorDate();
+  const months = range === "week" || range === "month" ? 1 : range === "6m" ? 6 : 12;
+  const list = [];
+  for (let i = months - 1; i >= 0; i -= 1) {
+    const d = addMonths(anchor, -i);
+    list.push({ year: d.getFullYear(), month: d.getMonth() });
+  }
+  const large = range === "month" || range === "week";
+  return `
+    ${calendarChoiceLegendHtml(tracker)}
+    ${calendarFilterHintHtml(tracker)}
+    <div class="mini-months ${range === "year" ? "year" : ""}">
+      ${list.map(({ year, month }) => calendarMonth(year, month, large, tracker.id)).join("")}
+    </div>
+  `;
 }
 
-function periodAnchorDate(view) {
-  const iso = state[periodAnchorKey(view)] || localISODate(new Date());
+function periodAnchorDate() {
+  const iso = state.statsAnchor || localISODate(new Date());
   return startOfDay(new Date(`${iso}T12:00:00`));
 }
 
-function resetPeriodAnchor(view) {
-  state[periodAnchorKey(view)] = localISODate(new Date());
+function resetPeriodAnchor() {
+  state.statsAnchor = localISODate(new Date());
 }
 
-function shiftPeriodAnchor(view, direction) {
-  const range = view === "calendar" ? state.calendarRange : state.statsRange;
-  let next = periodAnchorDate(view);
-  if (view === "stats" && range === "week") {
+function shiftPeriodAnchor(direction) {
+  const range = state.statsRange;
+  let next = periodAnchorDate();
+  if (range === "week") {
     next = addDays(next, 7 * direction);
   } else if (range === "month") {
     next = addMonths(next, direction);
@@ -738,13 +698,13 @@ function shiftPeriodAnchor(view, direction) {
   } else if (range === "year") {
     next = addMonths(next, 12 * direction);
   }
-  state[periodAnchorKey(view)] = localISODate(next);
+  state.statsAnchor = localISODate(next);
 }
 
-function formatPeriodLabel(view) {
-  const range = view === "calendar" ? state.calendarRange : state.statsRange;
-  const end = periodAnchorDate(view);
-  if (view === "stats" && range === "week") {
+function formatPeriodLabel() {
+  const range = state.statsRange;
+  const end = periodAnchorDate();
+  if (range === "week") {
     const from = addDays(end, -6);
     return `${from.toLocaleDateString("nl-NL", { day: "numeric", month: "short" })} – ${end.toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" })}`;
   }
@@ -761,14 +721,12 @@ function formatPeriodLabel(view) {
   return `${fromLabel} ${from.getFullYear()} – ${toLabel} ${end.getFullYear()}`;
 }
 
-function periodNavHtml(view) {
-  const prevAction = view === "calendar" ? "cal-period-prev" : "stats-period-prev";
-  const nextAction = view === "calendar" ? "cal-period-next" : "stats-period-next";
+function periodNavHtml() {
   return `
     <div class="period-nav" role="group" aria-label="Periode">
-      <button class="icon-btn icon-btn-sm" data-action="${prevAction}" type="button" aria-label="Vorige periode">‹</button>
-      <p class="period-nav-label">${escapeHtml(formatPeriodLabel(view))}</p>
-      <button class="icon-btn icon-btn-sm" data-action="${nextAction}" type="button" aria-label="Volgende periode">›</button>
+      <button class="icon-btn icon-btn-sm" data-action="stats-period-prev" type="button" aria-label="Vorige periode">‹</button>
+      <p class="period-nav-label">${escapeHtml(formatPeriodLabel())}</p>
+      <button class="icon-btn icon-btn-sm" data-action="stats-period-next" type="button" aria-label="Volgende periode">›</button>
     </div>
   `;
 }
@@ -782,36 +740,74 @@ function rangeStart(kind, endDate = new Date()) {
 }
 
 function statsPeriodBounds() {
-  const anchor = periodAnchorDate("stats");
+  const anchor = periodAnchorDate();
   return {
     from: rangeStart(state.statsRange, anchor),
     to: endOfDay(anchor),
   };
 }
 
+function statsTrackerListItem(tracker) {
+  const summary = summaryFor(tracker, new Date());
+  const cat = tracker.category ? categoryById(tracker.category) : overigCategory();
+  return `
+    <button type="button" class="card tracker-card" data-stats-tracker="${tracker.id}">
+      <span class="swatch" style="background:${escapeHtml(tracker.color)}" aria-hidden="true">◔</span>
+      <span class="meta">
+        <h3>${escapeHtml(tracker.name)}</h3>
+        <p class="hint">${escapeHtml(cat?.name || "Overig")} · vandaag: ${escapeHtml(summary)}</p>
+      </span>
+      <span class="plus" aria-hidden="true">›</span>
+    </button>
+  `;
+}
+
 function renderStats() {
   appEl.classList.remove("app--tiles");
+  const active = state.trackers.filter((t) => !t.archived);
+
+  if (!state.statsTrackerId) {
+    appEl.innerHTML = `
+      <div class="view-body view-body--stats">
+        <p class="hint stats-list-intro">Kies een tracker voor kalender en statistieken.</p>
+        <div class="grid tracker-grid stats-tracker-list">
+          ${active.length
+            ? active.map((t) => statsTrackerListItem(t)).join("")
+            : `<p class="empty">Nog geen actieve trackers.</p>`}
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const tracker = trackerById(state.statsTrackerId);
+  if (!tracker || tracker.archived) {
+    state.statsTrackerId = null;
+    renderStats();
+    return;
+  }
+
   const { from, to } = statsPeriodBounds();
   const entries = state.entries.filter((e) => {
+    if (e.tracker !== tracker.id) return false;
     const d = parsePbDate(e.logged_at);
     return d >= from && d <= to;
   });
-  const byTracker = new Map();
-  entries.forEach((entry) => {
-    if (!byTracker.has(entry.tracker)) byTracker.set(entry.tracker, []);
-    byTracker.get(entry.tracker).push(entry);
-  });
+  const range = state.statsRange;
+
   appEl.innerHTML = `
+    <button class="btn btn-ghost btn-sm stats-back" data-action="stats-back" type="button">← Alle trackers</button>
     <div class="period-toolbar">
-      ${periodNavHtml("stats")}
+      ${periodNavHtml()}
       <div class="segment">
-        <button data-stats-range="week" class="${state.statsRange === "week" ? "is-active" : ""}" type="button">7 dagen</button>
-        <button data-stats-range="month" class="${state.statsRange === "month" ? "is-active" : ""}" type="button">Deze maand</button>
-        <button data-stats-range="6m" class="${state.statsRange === "6m" ? "is-active" : ""}" type="button">6 maanden</button>
-        <button data-stats-range="year" class="${state.statsRange === "year" ? "is-active" : ""}" type="button">Jaar</button>
+        <button data-stats-range="week" class="${range === "week" ? "is-active" : ""}" type="button">7 dagen</button>
+        <button data-stats-range="month" class="${range === "month" ? "is-active" : ""}" type="button">Deze maand</button>
+        <button data-stats-range="6m" class="${range === "6m" ? "is-active" : ""}" type="button">6 maanden</button>
+        <button data-stats-range="year" class="${range === "year" ? "is-active" : ""}" type="button">Jaar</button>
       </div>
     </div>
     <div class="view-body view-body--stats">
+      ${statsCalendarSection(tracker)}
       <div class="grid stats-grid">
         <section class="card">
           <p class="hint">Logs in periode</p>
@@ -822,7 +818,7 @@ function renderStats() {
           <p class="stat-value">${new Set(entries.map((e) => localISODate(parsePbDate(e.logged_at)))).size}</p>
         </section>
       </div>
-      ${state.trackers.filter((t) => !t.archived).map((tracker) => trackerStats(tracker, byTracker.get(tracker.id) || [])).join("")}
+      ${trackerStats(tracker, entries)}
     </div>
   `;
 }
@@ -1085,7 +1081,8 @@ function logForm(tracker, entry = null, date = new Date()) {
 
 function daySheet(dateStr) {
   const date = new Date(`${dateStr}T12:00:00`);
-  const items = calendarEntriesForDay(date);
+  const trackerId = state.view === "stats" ? state.statsTrackerId : null;
+  const items = trackerId ? calendarEntriesForDay(date, trackerId) : entriesForDay(date);
   return `
     <h2 style="margin:0 0 8px">${formatDayTitle(date)}</h2>
     ${items.length ? items.map((entry) => {
@@ -1268,7 +1265,7 @@ async function quickCheck(tracker) {
 }
 
 appEl.addEventListener("click", async (event) => {
-  const t = event.target.closest("[data-open-tracker],[data-quick],[data-action],[data-cal-range],[data-cal-filter],[data-stats-range],[data-day],[data-edit-tracker],[data-edit-category]");
+  const t = event.target.closest("[data-open-tracker],[data-quick],[data-action],[data-stats-range],[data-stats-tracker],[data-day],[data-edit-tracker],[data-edit-category]");
   if (!t) return;
   if (t.dataset.quick === "counter") {
     event.stopPropagation();
@@ -1312,34 +1309,27 @@ appEl.addEventListener("click", async (event) => {
     state.selectedDay = localISODate(addDays(selectedDayDate(), 1));
     render();
   }
-  if (t.dataset.calFilter) {
-    state.calendarFilterTrackerId = t.dataset.calFilter === "all" ? null : t.dataset.calFilter;
-    renderCalendar();
+  if (t.dataset.statsTracker) {
+    state.statsTrackerId = t.dataset.statsTracker;
+    render();
+    return;
   }
-  if (t.dataset.action === "cal-period-prev") {
-    shiftPeriodAnchor("calendar", -1);
-    renderCalendar();
-  }
-  if (t.dataset.action === "cal-period-next") {
-    shiftPeriodAnchor("calendar", 1);
-    renderCalendar();
+  if (t.dataset.action === "stats-back") {
+    state.statsTrackerId = null;
+    render();
+    return;
   }
   if (t.dataset.action === "stats-period-prev") {
-    shiftPeriodAnchor("stats", -1);
+    shiftPeriodAnchor(-1);
     renderStats();
   }
   if (t.dataset.action === "stats-period-next") {
-    shiftPeriodAnchor("stats", 1);
+    shiftPeriodAnchor(1);
     renderStats();
-  }
-  if (t.dataset.calRange) {
-    state.calendarRange = t.dataset.calRange;
-    resetPeriodAnchor("calendar");
-    renderCalendar();
   }
   if (t.dataset.statsRange) {
     state.statsRange = t.dataset.statsRange;
-    resetPeriodAnchor("stats");
+    resetPeriodAnchor();
     renderStats();
   }
   if (t.dataset.day) openSheet(daySheet(t.dataset.day));
@@ -1403,7 +1393,15 @@ sheetEl.addEventListener("click", async (event) => {
       const tracker = trackerById(entry.tracker);
       openLogModal(logForm(tracker, entry));
     }
-    if (t.dataset.addOnDay) openSheet(pickTrackerSheet(t.dataset.addOnDay));
+    if (t.dataset.addOnDay) {
+      const dateStr = t.dataset.addOnDay;
+      if (state.statsTrackerId) {
+        const date = new Date(`${dateStr}T12:00:00`);
+        openLogModal(logForm(trackerById(state.statsTrackerId), null, date));
+      } else {
+        openSheet(pickTrackerSheet(dateStr));
+      }
+    }
     if (t.dataset.logTracker) {
       const tracker = trackerById(t.dataset.logTracker);
       const date = new Date(`${t.dataset.onDay}T${pad(new Date().getHours())}:${pad(new Date().getMinutes())}:00`);

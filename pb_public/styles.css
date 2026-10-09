@@ -578,6 +578,26 @@ body.view-today .app.app--tiles {
   align-items: center;
 }
 
+.stats-back {
+  align-self: flex-start;
+  margin-bottom: 4px;
+}
+
+.stats-list-intro {
+  margin: 0 0 4px;
+}
+
+.stats-tracker-list .tracker-card {
+  cursor: pointer;
+}
+
+.stats-tracker-list .plus {
+  background: transparent;
+  color: var(--muted);
+  font-size: 22px;
+  font-weight: 400;
+}
+
 .period-toolbar {
   flex-shrink: 0;
   width: 100%;
@@ -655,7 +675,7 @@ body.view-today .app.app--tiles {
   right: 0;
   bottom: 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   background: color-mix(in srgb, var(--bg-elev) 92%, transparent);
   border-top: 1px solid var(--line);
   padding: 8px 8px calc(10px + env(safe-area-inset-bottom));
