@@ -34,7 +34,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.19";
+const APP_VERSION = "1.0.20";
 
 const appEl = document.getElementById("app");
 const sheetEl = document.getElementById("sheet");
@@ -920,7 +920,14 @@ function trackerStatsHead(tracker) {
   `;
 }
 
-function trackerValueDistribution(tracker, items) {
+function distributionColor(tracker, label, index, choiceColors) {
+  if (tracker.type === "choice") {
+    return choiceColors.get(label) || colorForChoiceValue(tracker, label);
+  }
+  return COLORS[(trackerPaletteOffset(tracker.id) + index) % COLORS.length];
+}
+
+function distributionBuckets(tracker, items) {
   const configured = tracker.type === "choice" ? (optionsOf(tracker).choices || []) : [];
   const valueCounts = {};
   configured.forEach((label) => { valueCounts[label] = 0; });
@@ -928,29 +935,100 @@ function trackerValueDistribution(tracker, items) {
     const key = String(entry.value_text || "—").trim() || "—";
     valueCounts[key] = (valueCounts[key] || 0) + 1;
   });
-  const labels = tracker.type === "choice"
+  let labels = tracker.type === "choice"
     ? [...new Set([...configured, ...Object.keys(valueCounts)])]
     : Object.keys(valueCounts).sort((a, b) => (valueCounts[b] || 0) - (valueCounts[a] || 0) || a.localeCompare(b));
-  if (!labels.length) return "";
-  const maxCount = Math.max(1, ...labels.map((label) => valueCounts[label] || 0));
-  const colors = choiceColorsForTracker(tracker);
-  const rows = labels.map((label) => {
-    const count = valueCounts[label] || 0;
-    const barColor = tracker.type === "choice"
-      ? (colors.get(label) || colorForChoiceValue(tracker, label))
-      : tracker.color;
+
+  if (tracker.type === "text" && labels.length > 8) {
+    const top = labels.slice(0, 7);
+    const rest = labels.slice(7);
+    const otherCount = rest.reduce((sum, label) => sum + (valueCounts[label] || 0), 0);
+    labels = [...top];
+    if (otherCount > 0) {
+      valueCounts.Overig = otherCount;
+      labels.push("Overig");
+    }
+  }
+
+  const choiceColors = choiceColorsForTracker(tracker);
+  return labels.map((label, index) => ({
+    label,
+    count: valueCounts[label] || 0,
+    color: distributionColor(tracker, label, index, choiceColors),
+  }));
+}
+
+function donutSlicePath(cx, cy, outerR, innerR, startAngle, endAngle) {
+  const large = endAngle - startAngle > Math.PI ? 1 : 0;
+  const sx = cx + outerR * Math.cos(startAngle);
+  const sy = cy + outerR * Math.sin(startAngle);
+  const ex = cx + outerR * Math.cos(endAngle);
+  const ey = cy + outerR * Math.sin(endAngle);
+  const ix = cx + innerR * Math.cos(endAngle);
+  const iy = cy + innerR * Math.sin(endAngle);
+  const isx = cx + innerR * Math.cos(startAngle);
+  const isy = cy + innerR * Math.sin(startAngle);
+  return `M ${sx.toFixed(2)} ${sy.toFixed(2)} A ${outerR} ${outerR} 0 ${large} 1 ${ex.toFixed(2)} ${ey.toFixed(2)} L ${ix.toFixed(2)} ${iy.toFixed(2)} A ${innerR} ${innerR} 0 ${large} 0 ${isx.toFixed(2)} ${isy.toFixed(2)} Z`;
+}
+
+function statPieChartHtml(buckets) {
+  const slices = buckets.filter((b) => b.count > 0);
+  const total = slices.reduce((sum, b) => sum + b.count, 0);
+  if (!total) {
+    return `<p class="empty stat-chart-empty">Nog geen keuzes in deze periode.</p>`;
+  }
+  const size = 168;
+  const cx = size / 2;
+  const cy = size / 2;
+  const outerR = 74;
+  const innerR = 46;
+  let angle = -Math.PI / 2;
+  const paths = slices.map((slice) => {
+    const sweep = (slice.count / total) * Math.PI * 2;
+    const start = angle;
+    const end = angle + sweep;
+    angle = end;
+    const pct = Math.round((slice.count / total) * 100);
     return `
-      <div class="stat-choice-row">
-        <span class="stat-choice-label hint">${escapeHtml(label)}</span>
-        <div class="bar stat-choice-bar"><span style="width:${Math.round((count / maxCount) * 100)}%;background:${escapeHtml(barColor)}"></span></div>
-        <span class="stat-choice-count hint">${count}×</span>
-      </div>
+      <path
+        class="stat-pie-slice"
+        d="${donutSlicePath(cx, cy, outerR, innerR, start, end)}"
+        fill="${escapeHtml(slice.color)}"
+      >
+        <title>${escapeHtml(slice.label)}: ${slice.count}× (${pct}%)</title>
+      </path>
     `;
   }).join("");
   return `
+    <svg class="stat-pie-chart" viewBox="0 0 ${size} ${size}" role="img" aria-label="Cirkeldiagram verdeling keuzes">
+      ${paths}
+      <text class="stat-pie-center" x="${cx}" y="${cy - 2}" text-anchor="middle">${total}</text>
+      <text class="stat-pie-center-sub" x="${cx}" y="${cy + 12}" text-anchor="middle">logs</text>
+    </svg>
+  `;
+}
+
+function trackerValueDistribution(tracker, items) {
+  const buckets = distributionBuckets(tracker, items);
+  if (!buckets.length) return "";
+  const maxCount = Math.max(1, ...buckets.map((b) => b.count));
+  const rows = buckets.map((bucket) => `
+    <div class="stat-choice-row">
+      <span class="stat-choice-label hint">
+        <i class="dot stat-choice-dot" style="background:${escapeHtml(bucket.color)}"></i>
+        ${escapeHtml(bucket.label)}
+      </span>
+      <div class="bar stat-choice-bar"><span style="width:${Math.round((bucket.count / maxCount) * 100)}%;background:${escapeHtml(bucket.color)}"></span></div>
+      <span class="stat-choice-count hint">${bucket.count}×</span>
+    </div>
+  `).join("");
+  return `
     <div class="stat-section">
       <p class="hint stat-section-label">Verdeling per keuze</p>
-      <div class="stat-choice-rows">${rows}</div>
+      <div class="stat-distribution-layout">
+        <div class="stat-pie-wrap">${statPieChartHtml(buckets)}</div>
+        <div class="stat-choice-rows">${rows}</div>
+      </div>
     </div>
   `;
 }
