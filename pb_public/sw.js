@@ -1,5 +1,5 @@
 /** Bump when static assets change so clients pick up updates. */
-const CACHE_NAME = "tracknote-v1.0.18";
+const CACHE_NAME = "tracknote-v1.0.19";
 const PRECACHE = [
   "/",
   "/index.html",

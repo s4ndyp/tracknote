@@ -1219,6 +1219,61 @@ textarea { min-height: 90px; resize: vertical; }
   margin-top: 0;
 }
 
+.stat-section {
+  margin-top: 14px;
+}
+
+.stat-section-label {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.stat-line-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.stat-chart-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.stat-chart-line {
+  fill: none;
+  stroke: var(--chart-color, #64748b);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.stat-chart-area {
+  fill: color-mix(in srgb, var(--chart-color, #64748b) 22%, transparent);
+  stroke: none;
+}
+
+.stat-chart-dot {
+  fill: var(--chart-color, #64748b);
+  stroke: var(--bg-elev);
+  stroke-width: 1;
+}
+
+.stat-chart-axis-label {
+  fill: var(--dim);
+  font-size: 9px;
+}
+
+.stat-chart-empty {
+  padding: 12px 0;
+  margin: 0;
+}
+
+.stat-type-summary {
+  margin: 14px 0 0;
+}
+
 .stat-choice-rows {
   display: grid;
   gap: 10px;
