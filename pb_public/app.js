@@ -34,7 +34,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.22";
+const APP_VERSION = "1.0.23";
 const BACKUP_FORMAT = "tracknote-backup";
 const BACKUP_VERSION = 1;
 
@@ -1940,7 +1940,7 @@ appEl.addEventListener("click", async (event) => {
 });
 
 sheetEl.addEventListener("click", async (event) => {
-  const t = event.target.closest("[data-close],[data-color],[data-cat-color],[data-choice],[data-scale],[data-save-tracker],[data-delete-tracker],[data-save-category],[data-delete-category],[data-save-entry],[data-delete-entry],[data-edit-entry],[data-add-on-day],[data-log-tracker],[data-action]");
+  const t = event.target.closest("[data-close],[data-color],[data-cat-color],[data-choice],[data-scale],[data-save-tracker],[data-delete-tracker],[data-save-category],[data-delete-category],[data-save-entry],[data-delete-entry],[data-edit-entry],[data-add-on-day],[data-log-tracker],[data-action=\"restore-backup\"]");
   if (!t) return;
   if (t.dataset.close === "sheet") {
     closeSheet();
