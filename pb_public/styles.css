@@ -410,6 +410,17 @@ body.view-today .app.app--tiles {
   padding-top: 20px;
 }
 
+.trackers-backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.trackers-admin-backup .hint {
+  margin-top: 0;
+}
+
 .admin-icon-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));

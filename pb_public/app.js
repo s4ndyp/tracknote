@@ -34,7 +34,9 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.21";
+const APP_VERSION = "1.0.22";
+const BACKUP_FORMAT = "tracknote-backup";
+const BACKUP_VERSION = 1;
 
 const appEl = document.getElementById("app");
 const sheetEl = document.getElementById("sheet");
@@ -223,6 +225,192 @@ async function listAll(collection, params = {}) {
     page += 1;
   } while (page <= totalPages);
   return items;
+}
+
+function backupCategoryRecord(record) {
+  return {
+    id: record.id,
+    name: record.name,
+    icon: record.icon || "",
+    color: record.color,
+    sort_order: record.sort_order ?? 0,
+  };
+}
+
+function backupTrackerRecord(record) {
+  return {
+    id: record.id,
+    name: record.name,
+    icon: record.icon || "",
+    color: record.color,
+    type: record.type,
+    unit: record.unit || "",
+    options: optionsOf(record),
+    description: record.description || "",
+    sort_order: record.sort_order ?? 0,
+    archived: Boolean(record.archived),
+    once_per_day: Boolean(record.once_per_day),
+    category: record.category || null,
+  };
+}
+
+function backupEntryRecord(record) {
+  return {
+    id: record.id,
+    tracker: record.tracker,
+    logged_at: record.logged_at,
+    value_number: record.value_number ?? 0,
+    value_text: record.value_text || "",
+    note: record.note || "",
+  };
+}
+
+function parseBackupJson(text) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (_) {
+    throw new Error("Geen geldig JSON-bestand");
+  }
+  if (data?.format !== BACKUP_FORMAT) {
+    throw new Error("Onbekend backupformaat");
+  }
+  if (Number(data.version) !== BACKUP_VERSION) {
+    throw new Error(`Backupversie ${data.version ?? "?"} wordt niet ondersteund`);
+  }
+  if (!Array.isArray(data.categories) || !Array.isArray(data.trackers) || !Array.isArray(data.entries)) {
+    throw new Error("Backup mist categorieën, trackers of logs");
+  }
+  const trackerIds = new Set(data.trackers.map((t) => t.id));
+  const badEntry = data.entries.find((e) => !trackerIds.has(e.tracker));
+  if (badEntry) {
+    throw new Error("Backup bevat logs zonder bijbehorende tracker");
+  }
+  return data;
+}
+
+async function deleteAllInCollection(collection) {
+  const items = await listAll(collection);
+  for (const item of items) {
+    await pbRequest(`/api/collections/${collection}/records/${item.id}`, { method: "DELETE" });
+  }
+  return items.length;
+}
+
+async function createBackupRecord(collection, payload) {
+  try {
+    await pbRequest(`/api/collections/${collection}/records`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return payload.id;
+  } catch (firstErr) {
+    if (!payload.id) throw firstErr;
+    const { id, ...rest } = payload;
+    const created = await pbRequest(`/api/collections/${collection}/records`, {
+      method: "POST",
+      body: JSON.stringify(rest),
+    });
+    return created.id;
+  }
+}
+
+async function exportBackup() {
+  await loadCategories();
+  await loadTrackers();
+  const entries = await listAll("entries", { sort: "logged_at" });
+  const backup = {
+    format: BACKUP_FORMAT,
+    version: BACKUP_VERSION,
+    app_version: APP_VERSION,
+    exported_at: new Date().toISOString(),
+    categories: state.categories.map(backupCategoryRecord),
+    trackers: state.trackers.map(backupTrackerRecord),
+    entries: entries.map(backupEntryRecord),
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `tracknote-backup-${localISODate(new Date())}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  toast(`Backup: ${backup.categories.length} categorieën, ${backup.trackers.length} trackers, ${backup.entries.length} logs`);
+}
+
+async function restoreBackup(data) {
+  state.loading = true;
+  render();
+  try {
+    await deleteAllInCollection("entries");
+    await deleteAllInCollection("trackers");
+    await deleteAllInCollection("categories");
+
+    const categoryIdMap = new Map();
+    for (const category of data.categories) {
+      const newId = await createBackupRecord("categories", {
+        id: category.id,
+        name: category.name,
+        icon: category.icon || "",
+        color: category.color,
+        sort_order: category.sort_order ?? 0,
+      });
+      categoryIdMap.set(category.id, newId);
+    }
+
+    const trackerIdMap = new Map();
+    for (const tracker of data.trackers) {
+      const categoryRef = tracker.category ? categoryIdMap.get(tracker.category) || null : null;
+      const newId = await createBackupRecord("trackers", {
+        id: tracker.id,
+        name: tracker.name,
+        icon: tracker.icon || "",
+        color: tracker.color,
+        type: tracker.type,
+        unit: tracker.unit || "",
+        options: tracker.options || {},
+        description: tracker.description || "",
+        sort_order: tracker.sort_order ?? 0,
+        archived: Boolean(tracker.archived),
+        once_per_day: Boolean(tracker.once_per_day),
+        category: categoryRef,
+      });
+      trackerIdMap.set(tracker.id, newId);
+    }
+
+    for (const entry of data.entries) {
+      const trackerRef = trackerIdMap.get(entry.tracker);
+      if (!trackerRef) continue;
+      await createBackupRecord("entries", {
+        id: entry.id,
+        tracker: trackerRef,
+        logged_at: entry.logged_at,
+        value_number: entry.value_number ?? 0,
+        value_text: entry.value_text || "",
+        note: entry.note || "",
+      });
+    }
+
+    closeSheet();
+    toast(`Teruggezet: ${data.categories.length} categorieën, ${data.trackers.length} trackers, ${data.entries.length} logs`);
+    state.statsTrackerId = null;
+    await refresh(2000);
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
+function backupRestoreSheet() {
+  return `
+    <h2 style="margin:0 0 8px">Backup terugzetten</h2>
+    <p class="hint">Importeer een eerder gedownload JSON-backupbestand. Alle categorieën, trackers en logs op deze server worden vervangen.</p>
+    <label for="f-backup-file">Backupbestand</label>
+    <input id="f-backup-file" type="file" accept=".json,application/json" />
+    <div class="actions">
+      <button class="btn btn-danger" data-restore-backup type="button">Alles vervangen en terugzetten</button>
+    </div>
+  `;
 }
 
 async function loadCategories() {
@@ -1347,6 +1535,14 @@ function renderTrackers() {
           ${state.trackers.map(trackerAdminIcon).join("") || `<p class="empty">Nog geen trackers.</p>`}
         </div>
       </section>
+      <section class="trackers-admin-section trackers-admin-backup" aria-label="Backup en restore">
+        <h2 class="section-title" style="margin-top:0">Backup &amp; restore</h2>
+        <p class="hint">Download een JSON-backup of zet data terug op een andere server. IDs blijven behouden waar mogelijk.</p>
+        <div class="trackers-backup-actions">
+          <button class="btn btn-ghost" data-action="backup-export" type="button">Backup downloaden</button>
+          <button class="btn btn-ghost" data-action="backup-restore-open" type="button">Backup terugzetten…</button>
+        </div>
+      </section>
     </div>
   `;
 }
@@ -1696,6 +1892,18 @@ appEl.addEventListener("click", async (event) => {
   }
   if (t.dataset.action === "new-category") openSheet(categoryForm());
   if (t.dataset.action === "new-tracker") openSheet(trackerForm());
+  if (t.dataset.action === "backup-export") {
+    try {
+      await exportBackup();
+    } catch (err) {
+      toast(err.message);
+    }
+    return;
+  }
+  if (t.dataset.action === "backup-restore-open") {
+    openSheet(backupRestoreSheet());
+    return;
+  }
   if (t.dataset.action === "open-log") openSheet(todayLogSheet());
   if (t.dataset.action === "day-prev") {
     state.selectedDay = localISODate(addDays(selectedDayDate(), -1));
@@ -1732,7 +1940,7 @@ appEl.addEventListener("click", async (event) => {
 });
 
 sheetEl.addEventListener("click", async (event) => {
-  const t = event.target.closest("[data-close],[data-color],[data-cat-color],[data-choice],[data-scale],[data-save-tracker],[data-delete-tracker],[data-save-category],[data-delete-category],[data-save-entry],[data-delete-entry],[data-edit-entry],[data-add-on-day],[data-log-tracker]");
+  const t = event.target.closest("[data-close],[data-color],[data-cat-color],[data-choice],[data-scale],[data-save-tracker],[data-delete-tracker],[data-save-category],[data-delete-category],[data-save-entry],[data-delete-entry],[data-edit-entry],[data-add-on-day],[data-log-tracker],[data-restore-backup]");
   if (!t) return;
   if (t.dataset.close === "sheet") {
     closeSheet();
@@ -1761,6 +1969,19 @@ sheetEl.addEventListener("click", async (event) => {
     return;
   }
   try {
+    if (t.dataset.restoreBackup) {
+      const fileInput = document.getElementById("f-backup-file");
+      const file = fileInput?.files?.[0];
+      if (!file) {
+        toast("Kies eerst een backupbestand");
+        return;
+      }
+      if (!confirm("Alle categorieën, trackers en logs op deze server worden vervangen. Doorgaan?")) return;
+      const text = await file.text();
+      const data = parseBackupJson(text);
+      await restoreBackup(data);
+      return;
+    }
     if (t.dataset.saveCategory) await saveCategory(t.dataset.saveCategory);
     if (t.dataset.deleteCategory) {
       if (!confirm("Categorie verwijderen? Trackers blijven bestaan maar verliezen deze categorie.")) return;
