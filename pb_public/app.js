@@ -34,7 +34,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.23";
+const APP_VERSION = "1.0.24";
 const BACKUP_FORMAT = "tracknote-backup";
 const BACKUP_VERSION = 1;
 
@@ -1288,6 +1288,79 @@ function statUnitSuffix(tracker, spaced = true) {
   return `${spaced ? " " : ""}${tracker.unit}`;
 }
 
+function sortedLogTimestamps(items) {
+  return items
+    .map((entry) => parsePbDate(entry.logged_at).getTime())
+    .filter((time) => !Number.isNaN(time))
+    .sort((a, b) => a - b);
+}
+
+function logIntervalGapsMs(timestamps) {
+  const gaps = [];
+  for (let i = 1; i < timestamps.length; i += 1) {
+    gaps.push(timestamps[i] - timestamps[i - 1]);
+  }
+  return gaps;
+}
+
+function formatDurationMs(ms) {
+  if (ms === null || ms === undefined || Number.isNaN(ms)) return "—";
+  const totalMinutes = Math.max(1, Math.round(ms / 60000));
+  const minutes = totalMinutes % 60;
+  const totalHours = Math.floor(totalMinutes / 60);
+  const hours = totalHours % 24;
+  const days = Math.floor(totalHours / 24);
+  if (days > 0) {
+    if (hours > 0) return `${days} d ${hours} u`;
+    return `${days} ${days === 1 ? "dag" : "dagen"}`;
+  }
+  if (totalHours >= 1) {
+    if (minutes > 0) return `${totalHours} u ${minutes} min`;
+    return `${totalHours} u`;
+  }
+  if (totalMinutes <= 1 && ms < 60000) return "< 1 min";
+  return `${totalMinutes} min`;
+}
+
+function statLogIntervalsHtml(items) {
+  const gaps = logIntervalGapsMs(sortedLogTimestamps(items));
+  const emptyNote = items.length < 2
+    ? "Minimaal 2 logs in deze periode nodig."
+    : "—";
+  if (!gaps.length) {
+    return `
+      <div class="stat-section">
+        <p class="hint stat-section-label">Tijd tussen logs</p>
+        <p class="hint stat-interval-empty">${emptyNote}</p>
+      </div>
+    `;
+  }
+  const total = gaps.reduce((sum, gap) => sum + gap, 0);
+  const avg = total / gaps.length;
+  const min = Math.min(...gaps);
+  const max = Math.max(...gaps);
+  return `
+    <div class="stat-section">
+      <p class="hint stat-section-label">Tijd tussen logs</p>
+      <p class="hint stat-minmax-note">Tussen opeenvolgende logs in deze periode</p>
+      <div class="stat-metrics-grid">
+        <div class="stat-metric-card">
+          <p class="hint">Gemiddeld</p>
+          <p class="stat-metric-value stat-metric-value--duration">${formatDurationMs(avg)}</p>
+        </div>
+        <div class="stat-metric-card">
+          <p class="hint">Langst</p>
+          <p class="stat-metric-value stat-metric-value--duration">${formatDurationMs(max)}</p>
+        </div>
+        <div class="stat-metric-card">
+          <p class="hint">Kortst</p>
+          <p class="stat-metric-value stat-metric-value--duration">${formatDurationMs(min)}</p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function statMinMaxMedianHtml(tracker, items, from, to) {
   if (!["counter", "number", "scale"].includes(tracker.type)) return "";
   const values = minMaxMedianValues(tracker, items, from, to);
@@ -1475,6 +1548,7 @@ function trackerStats(tracker, items, from, to) {
         <p class="hint stat-section-label">Logs per dag</p>
         ${statLineChartHtml(series, tracker.color)}
       </div>
+      ${statLogIntervalsHtml(items)}
       ${statMinMaxMedianHtml(tracker, items, from, to)}
       ${statTrendHtml(tracker, items, from, to)}
       ${statWeekdayHeatmapHtml(tracker, items, from, to)}

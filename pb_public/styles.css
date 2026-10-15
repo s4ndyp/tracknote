@@ -1312,6 +1312,16 @@ textarea { min-height: 90px; resize: vertical; }
   letter-spacing: -0.03em;
 }
 
+.stat-metric-value--duration {
+  font-size: 15px;
+  letter-spacing: -0.02em;
+}
+
+.stat-interval-empty {
+  margin: 0;
+  font-size: 13px;
+}
+
 .stat-minmax-note {
   margin: 0 0 8px;
   font-size: 12px;
