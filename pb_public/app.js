@@ -34,7 +34,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.24";
+const APP_VERSION = "1.0.25";
 const BACKUP_FORMAT = "tracknote-backup";
 const BACKUP_VERSION = 1;
 
@@ -1056,7 +1056,7 @@ function chartAxisTicks(series) {
   return ticks;
 }
 
-function statLineChartHtml(series, color) {
+function statBarChartHtml(series, color) {
   if (!series.length) {
     return `<p class="empty stat-chart-empty">Geen dagen in deze periode.</p>`;
   }
@@ -1066,33 +1066,39 @@ function statLineChartHtml(series, color) {
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
   const maxCount = Math.max(1, ...series.map((p) => p.count));
-  const coords = series.map((point, index) => {
-    const x = pad.left + (series.length <= 1 ? innerW / 2 : (index / (series.length - 1)) * innerW);
-    const y = pad.top + innerH - (point.count / maxCount) * innerH;
-    return { x, y, point };
-  });
-  const linePoints = coords.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(" ");
-  const areaPoints = [
-    `${coords[0].x.toFixed(1)},${(pad.top + innerH).toFixed(1)}`,
-    ...coords.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`),
-    `${coords[coords.length - 1].x.toFixed(1)},${(pad.top + innerH).toFixed(1)}`,
-  ].join(" ");
+  const n = series.length;
+  const slotW = innerW / n;
+  const barW = Math.max(1.2, Math.min(16, slotW * 0.72));
+  const baseline = pad.top + innerH;
+  const fill = color || "#64748b";
+  const bars = series.map((point, index) => {
+    const centerX = pad.left + slotW * index + slotW / 2;
+    const barH = (point.count / maxCount) * innerH;
+    const x = centerX - barW / 2;
+    const y = baseline - barH;
+    return `
+      <rect
+        class="stat-chart-bar"
+        x="${x.toFixed(2)}"
+        y="${y.toFixed(2)}"
+        width="${barW.toFixed(2)}"
+        height="${Math.max(0, barH).toFixed(2)}"
+        rx="2"
+        style="--chart-color:${escapeHtml(fill)}"
+      >
+        <title>${escapeHtml(formatDayShort(point.date))}: ${point.count} log${point.count === 1 ? "" : "s"}</title>
+      </rect>
+    `;
+  }).join("");
   const ticks = chartAxisTicks(series);
   const axisLabels = ticks.map(({ index, label }) => {
-    const x = pad.left + (series.length <= 1 ? innerW / 2 : (index / (series.length - 1)) * innerW);
-    return `<text class="stat-chart-axis-label" x="${x.toFixed(1)}" y="${height - 4}" text-anchor="middle">${escapeHtml(label)}</text>`;
+    const centerX = pad.left + slotW * index + slotW / 2;
+    return `<text class="stat-chart-axis-label" x="${centerX.toFixed(1)}" y="${height - 4}" text-anchor="middle">${escapeHtml(label)}</text>`;
   }).join("");
-  const stroke = color || "#64748b";
   return `
-    <svg class="stat-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Lijngrafiek logs per dag">
-      <line class="stat-chart-grid" x1="${pad.left}" y1="${pad.top + innerH}" x2="${width - pad.right}" y2="${pad.top + innerH}" />
-      <polygon class="stat-chart-area" points="${areaPoints}" style="--chart-color:${escapeHtml(stroke)}" />
-      <polyline class="stat-chart-line" points="${linePoints}" style="--chart-color:${escapeHtml(stroke)}" />
-      ${coords.map((c) => `
-        <circle class="stat-chart-dot" cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="2.5" style="--chart-color:${escapeHtml(stroke)}">
-          <title>${escapeHtml(formatDayShort(c.point.date))}: ${c.point.count} log${c.point.count === 1 ? "" : "s"}</title>
-        </circle>
-      `).join("")}
+    <svg class="stat-bar-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Staafdiagram logs per dag">
+      <line class="stat-chart-grid" x1="${pad.left}" y1="${baseline}" x2="${width - pad.right}" y2="${baseline}" />
+      ${bars}
       ${axisLabels}
     </svg>
   `;
@@ -1305,7 +1311,8 @@ function logIntervalGapsMs(timestamps) {
 
 function formatDurationMs(ms) {
   if (ms === null || ms === undefined || Number.isNaN(ms)) return "—";
-  const totalMinutes = Math.max(1, Math.round(ms / 60000));
+  if (ms < 60000) return "< 1 min";
+  const totalMinutes = Math.round(ms / 60000);
   const minutes = totalMinutes % 60;
   const totalHours = Math.floor(totalMinutes / 60);
   const hours = totalHours % 24;
@@ -1318,7 +1325,6 @@ function formatDurationMs(ms) {
     if (minutes > 0) return `${totalHours} u ${minutes} min`;
     return `${totalHours} u`;
   }
-  if (totalMinutes <= 1 && ms < 60000) return "< 1 min";
   return `${totalMinutes} min`;
 }
 
@@ -1546,7 +1552,7 @@ function trackerStats(tracker, items, from, to) {
       ${trackerStatsHead(tracker)}
       <div class="stat-section">
         <p class="hint stat-section-label">Logs per dag</p>
-        ${statLineChartHtml(series, tracker.color)}
+        ${statBarChartHtml(series, tracker.color)}
       </div>
       ${statLogIntervalsHtml(items)}
       ${statMinMaxMedianHtml(tracker, items, from, to)}
