@@ -408,7 +408,7 @@ function backupRestoreSheet() {
     <label for="f-backup-file">Backupbestand</label>
     <input id="f-backup-file" type="file" accept=".json,application/json" />
     <div class="actions">
-      <button class="btn btn-danger" data-restore-backup type="button">Alles vervangen en terugzetten</button>
+      <button class="btn btn-danger" data-action="restore-backup" type="button">Alles vervangen en terugzetten</button>
     </div>
   `;
 }
@@ -1940,7 +1940,7 @@ appEl.addEventListener("click", async (event) => {
 });
 
 sheetEl.addEventListener("click", async (event) => {
-  const t = event.target.closest("[data-close],[data-color],[data-cat-color],[data-choice],[data-scale],[data-save-tracker],[data-delete-tracker],[data-save-category],[data-delete-category],[data-save-entry],[data-delete-entry],[data-edit-entry],[data-add-on-day],[data-log-tracker],[data-restore-backup]");
+  const t = event.target.closest("[data-close],[data-color],[data-cat-color],[data-choice],[data-scale],[data-save-tracker],[data-delete-tracker],[data-save-category],[data-delete-category],[data-save-entry],[data-delete-entry],[data-edit-entry],[data-add-on-day],[data-log-tracker],[data-action]");
   if (!t) return;
   if (t.dataset.close === "sheet") {
     closeSheet();
@@ -1969,7 +1969,7 @@ sheetEl.addEventListener("click", async (event) => {
     return;
   }
   try {
-    if (t.dataset.restoreBackup) {
+    if (t.dataset.action === "restore-backup") {
       const fileInput = document.getElementById("f-backup-file");
       const file = fileInput?.files?.[0];
       if (!file) {
