@@ -34,7 +34,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.26";
+const APP_VERSION = "1.0.27";
 const DESKTOP_LAYOUT_MQ = "(min-width: 900px)";
 const BACKUP_FORMAT = "tracknote-backup";
 const BACKUP_VERSION = 1;

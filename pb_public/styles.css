@@ -1506,27 +1506,51 @@ textarea { min-height: 90px; resize: vertical; }
     font-size: 12px;
   }
 
-  .category-tile-frame {
-    --frame-pad: 10px;
-    max-width: 320px;
-    margin: 0 auto;
+  body.view-today .category-tile-frame {
+    --frame-pad: 8px;
+    width: fit-content;
+    max-width: 100%;
+    margin-inline: auto;
+    box-sizing: border-box;
   }
 
-  .tracker-chip-grid--category {
-    --chip-column-gap: 8px;
-    --chip-size: 68px;
-    width: auto;
-    max-width: 148px;
+  body.view-today .tracker-chip-grid.tracker-chip-grid--category {
+    --chip-column-gap: 6px;
+    --chip-row-gap: 6px;
+    --chip-size: 48px;
+    flex: 0 0 auto;
+    width: calc(2 * var(--chip-size) + var(--chip-column-gap));
+    max-width: 100%;
+    grid-template-columns: repeat(2, var(--chip-size));
+    grid-auto-rows: var(--chip-size);
+    max-height: calc(3 * var(--chip-size) + 2 * var(--chip-row-gap));
     margin-inline: auto;
   }
 
-  .tracker-chip-grid--category > .tracker-chip {
-    border-radius: 12px;
-    padding: 6px;
+  body.view-today .tracker-chip-grid--category > .tracker-chip {
+    border-radius: 10px;
+    padding: 4px;
   }
 
-  .tracker-chip-grid--category > .tracker-chip .tracker-chip-label {
-    font-size: 11px;
+  body.view-today .tracker-chip-grid--category > .tracker-chip .tracker-chip-label {
+    font-size: 9px;
+    -webkit-line-clamp: 3;
+  }
+
+  body.view-today .tracker-chip-grid--category > .tracker-chip .tracker-chip-check {
+    width: 14px;
+    height: 14px;
+  }
+
+  body.view-today .tracker-chip-grid--category > .tracker-chip .tracker-chip-check svg {
+    width: 8px;
+    height: 8px;
+  }
+
+  body.view-today .tracker-chip-grid--category > .tracker-chip .tracker-chip-badge--count {
+    min-width: 14px;
+    height: 14px;
+    font-size: 9px;
   }
 
   .today-bar {
