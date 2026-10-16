@@ -34,7 +34,8 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.25";
+const APP_VERSION = "1.0.26";
+const DESKTOP_LAYOUT_MQ = "(min-width: 900px)";
 const BACKUP_FORMAT = "tracknote-backup";
 const BACKUP_VERSION = 1;
 
@@ -150,8 +151,21 @@ function trackersInCategory(categoryId) {
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || a.name.localeCompare(b.name));
 }
 
+function isDesktopLayout() {
+  return typeof window !== "undefined" && window.matchMedia(DESKTOP_LAYOUT_MQ).matches;
+}
+
 function categoryGridLayout(count) {
   if (count <= 0) return { cols: 1, rows: 1 };
+  if (isDesktopLayout()) {
+    if (count === 1) return { cols: 1, rows: 1 };
+    if (count === 2) return { cols: 2, rows: 1 };
+    if (count <= 4) return { cols: 2, rows: 2 };
+    if (count <= 6) return { cols: 3, rows: 2 };
+    if (count <= 9) return { cols: 3, rows: 3 };
+    const cols = Math.min(4, Math.ceil(Math.sqrt(count * 1.15)));
+    return { cols, rows: Math.ceil(count / cols) };
+  }
   if (count === 1) return { cols: 1, rows: 1 };
   if (count === 2) return { cols: 1, rows: 2 };
   if (count <= 4) return { cols: 2, rows: 2 };
@@ -2151,4 +2165,11 @@ function registerServiceWorker() {
 }
 
 registerServiceWorker();
+
+if (typeof window !== "undefined") {
+  window.matchMedia(DESKTOP_LAYOUT_MQ).addEventListener("change", () => {
+    if (state.view === "today" || state.view === "stats") render();
+  });
+}
+
 refresh();
