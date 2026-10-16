@@ -1467,3 +1467,152 @@ textarea { min-height: 90px; resize: vertical; }
   align-items: center;
   margin: 4px 0 14px;
 }
+
+/* Desktop layout (mobile/tablet portrait unchanged below 900px) */
+@media (min-width: 900px) {
+  .topbar {
+    padding-left: max(24px, calc((100% - 1120px) / 2 + 24px));
+    padding-right: max(24px, calc((100% - 1120px) / 2 + 24px));
+  }
+
+  .app {
+    width: min(960px, calc(100% - 48px));
+  }
+
+  .app.app--tiles {
+    width: min(1120px, calc(100% - 48px));
+    max-width: 1120px;
+    padding-left: 24px;
+    padding-right: 24px;
+    padding-bottom: calc(var(--tabbar-h) + 12px);
+  }
+
+  .category-stage {
+    gap: 12px;
+    align-content: start;
+  }
+
+  .category-tile {
+    max-width: 360px;
+    justify-self: center;
+    width: 100%;
+  }
+
+  .category-tile-name {
+    font-size: 16px;
+  }
+
+  .category-tile-meta {
+    font-size: 12px;
+  }
+
+  .category-tile-frame {
+    --frame-pad: 10px;
+    max-width: 320px;
+    margin: 0 auto;
+  }
+
+  .tracker-chip-grid--category {
+    --chip-column-gap: 8px;
+    --chip-size: 68px;
+    width: auto;
+    max-width: 148px;
+    margin-inline: auto;
+  }
+
+  .tracker-chip-grid--category > .tracker-chip {
+    border-radius: 12px;
+    padding: 6px;
+  }
+
+  .tracker-chip-grid--category > .tracker-chip .tracker-chip-label {
+    font-size: 11px;
+  }
+
+  .today-bar {
+    max-width: 720px;
+    margin-inline: auto;
+    width: 100%;
+  }
+
+  .period-toolbar {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .period-nav {
+    flex: 1 1 220px;
+  }
+
+  .period-toolbar .segment {
+    flex: 1 1 320px;
+  }
+
+  .view-body--stats {
+    max-width: 920px;
+    margin-inline: auto;
+    width: 100%;
+  }
+
+  .stat-tracker-card,
+  .mini-months {
+    max-width: 920px;
+    margin-inline: auto;
+    width: 100%;
+  }
+
+  .stats-back {
+    max-width: 920px;
+    margin-inline: auto;
+  }
+
+  .period-toolbar {
+    max-width: 920px;
+    margin-inline: auto;
+    width: 100%;
+  }
+
+  .trackers-admin {
+    max-width: 920px;
+    margin-inline: auto;
+    width: 100%;
+  }
+
+  .admin-icon-grid {
+    grid-template-columns: repeat(auto-fill, minmax(84px, 96px));
+    justify-content: start;
+  }
+
+  .admin-icon-grid--trackers {
+    grid-template-columns: repeat(auto-fill, minmax(84px, 96px));
+  }
+
+  .stats-tracker-list {
+    max-width: 560px;
+  }
+
+  .tabbar {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: min(520px, calc(100% - 32px));
+    border: 1px solid var(--line);
+    border-bottom: 0;
+    border-radius: 18px 18px 0 0;
+    box-shadow: var(--shadow);
+  }
+
+  .sheet-panel {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: min(560px, calc(100% - 32px));
+    border-radius: 24px 24px 0 0;
+  }
+
+  body.view-today h1 {
+    font-size: 21px;
+  }
+}
