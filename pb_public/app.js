@@ -34,7 +34,7 @@ const state = {
   loading: false,
 };
 
-const APP_VERSION = "1.0.27";
+const APP_VERSION = "1.0.28";
 const DESKTOP_LAYOUT_MQ = "(min-width: 900px)";
 const BACKUP_FORMAT = "tracknote-backup";
 const BACKUP_VERSION = 1;
@@ -703,13 +703,14 @@ function renderToday() {
   const dayLabel = isSelectedToday() ? "vandaag" : "op deze dag";
   const cats = [...state.categories].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
   const { cols } = categoryGridLayout(Math.max(cats.length, 1));
+  const colMin = isDesktopLayout() ? "minmax(260px, 1fr)" : "minmax(0, 1fr)";
   appEl.classList.add("app--tiles");
   appEl.innerHTML = `
     ${todayBarHtml(day, dayItems, dayLabel)}
     <div class="category-stage-wrap">
       <div
         class="category-stage"
-        style="grid-template-columns:repeat(${cols},minmax(0,1fr))"
+        style="grid-template-columns:repeat(${cols}, ${colMin})"
       >
         ${cats.length ? cats.map(categoryTile).join("") : `<p class="empty">Nog geen categorieën. Voeg ze toe onder Trackers.</p>`}
       </div>

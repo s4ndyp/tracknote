@@ -1492,65 +1492,50 @@ textarea { min-height: 90px; resize: vertical; }
     align-content: start;
   }
 
-  .category-tile {
-    max-width: 360px;
-    justify-self: center;
+  body.view-today .category-tile {
+    max-width: none;
     width: 100%;
+    justify-self: stretch;
+    min-width: 0;
   }
 
-  .category-tile-name {
+  body.view-today .category-tile-name {
     font-size: 16px;
   }
 
-  .category-tile-meta {
+  body.view-today .category-tile-meta {
     font-size: 12px;
   }
 
   body.view-today .category-tile-frame {
-    --frame-pad: 8px;
-    width: fit-content;
-    max-width: 100%;
-    margin-inline: auto;
-    box-sizing: border-box;
+    --frame-pad: 10px;
+    width: 100%;
+    max-width: none;
+    margin: 0;
   }
 
   body.view-today .tracker-chip-grid.tracker-chip-grid--category {
-    --chip-column-gap: 6px;
-    --chip-row-gap: 6px;
-    --chip-size: 48px;
+    --chip-column-gap: 8px;
+    --chip-row-gap: 8px;
+    --chip-size: min(56px, calc((100cqw - var(--chip-column-gap)) / 2));
     flex: 0 0 auto;
-    width: calc(2 * var(--chip-size) + var(--chip-column-gap));
-    max-width: 100%;
+    width: 100%;
+    max-width: none;
     grid-template-columns: repeat(2, var(--chip-size));
     grid-auto-rows: var(--chip-size);
     max-height: calc(3 * var(--chip-size) + 2 * var(--chip-row-gap));
+    justify-content: center;
     margin-inline: auto;
   }
 
   body.view-today .tracker-chip-grid--category > .tracker-chip {
-    border-radius: 10px;
-    padding: 4px;
+    border-radius: 11px;
+    padding: 5px;
   }
 
   body.view-today .tracker-chip-grid--category > .tracker-chip .tracker-chip-label {
-    font-size: 9px;
+    font-size: 10px;
     -webkit-line-clamp: 3;
-  }
-
-  body.view-today .tracker-chip-grid--category > .tracker-chip .tracker-chip-check {
-    width: 14px;
-    height: 14px;
-  }
-
-  body.view-today .tracker-chip-grid--category > .tracker-chip .tracker-chip-check svg {
-    width: 8px;
-    height: 8px;
-  }
-
-  body.view-today .tracker-chip-grid--category > .tracker-chip .tracker-chip-badge--count {
-    min-width: 14px;
-    height: 14px;
-    font-size: 9px;
   }
 
   .today-bar {
