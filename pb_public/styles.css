@@ -1517,7 +1517,7 @@ textarea { min-height: 90px; resize: vertical; }
   body.view-today .tracker-chip-grid.tracker-chip-grid--category {
     --chip-column-gap: 8px;
     --chip-row-gap: 8px;
-    --chip-size: min(56px, calc((100cqw - var(--chip-column-gap)) / 2));
+    --chip-size: min(100px, calc((100cqw - var(--chip-column-gap)) / 2));
     flex: 0 0 auto;
     width: 100%;
     max-width: none;
@@ -1534,8 +1534,8 @@ textarea { min-height: 90px; resize: vertical; }
   }
 
   body.view-today .tracker-chip-grid--category > .tracker-chip .tracker-chip-label {
-    font-size: 10px;
-    -webkit-line-clamp: 3;
+    font-size: 11px;
+    -webkit-line-clamp: 4;
   }
 
   .today-bar {
