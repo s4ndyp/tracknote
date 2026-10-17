@@ -556,12 +556,12 @@ function render() {
 function todayBarHtml(day, dayItems, dayLabel) {
   return `
     <div class="today-bar">
-      <button class="icon-btn icon-btn-sm" data-action="day-prev" type="button" aria-label="Vorige dag">‹</button>
+      <button class="icon-btn today-bar-nav" data-action="day-prev" type="button" aria-label="Vorige dag">‹</button>
       <div class="today-bar-mid">
         <p class="today-bar-date">${escapeHtml(formatDayShort(day))}</p>
         <p class="today-bar-meta">${dayItems.length} log${dayItems.length === 1 ? "" : "s"} ${dayLabel}</p>
       </div>
-      <button class="icon-btn icon-btn-sm" data-action="day-next" type="button" aria-label="Volgende dag">›</button>
+      <button class="icon-btn today-bar-nav" data-action="day-next" type="button" aria-label="Volgende dag">›</button>
       <button class="btn btn-ghost btn-sm" data-action="open-log" type="button">Logs</button>
     </div>
   `;
@@ -706,7 +706,6 @@ function renderToday() {
   const colMin = isDesktopLayout() ? "minmax(260px, 1fr)" : "minmax(0, 1fr)";
   appEl.classList.add("app--tiles");
   appEl.innerHTML = `
-    ${todayBarHtml(day, dayItems, dayLabel)}
     <div class="category-stage-wrap">
       <div
         class="category-stage"
@@ -715,6 +714,7 @@ function renderToday() {
         ${cats.length ? cats.map(categoryTile).join("") : `<p class="empty">Nog geen categorieën. Voeg ze toe onder Trackers.</p>`}
       </div>
     </div>
+    ${todayBarHtml(day, dayItems, dayLabel)}
   `;
 }
 
