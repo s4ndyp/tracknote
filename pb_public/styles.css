@@ -900,6 +900,50 @@ input, select, textarea {
 
 textarea { min-height: 90px; resize: vertical; }
 
+.text-autocomplete-wrap {
+  position: relative;
+}
+
+.text-autocomplete-wrap #f-text {
+  width: 100%;
+}
+
+.text-suggest-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 40;
+}
+
+.text-suggest-list li + li {
+  margin-top: 2px;
+}
+
+.text-suggest-list button {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 9px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.text-suggest-list button:hover,
+.text-suggest-list button:focus-visible {
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
