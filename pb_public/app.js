@@ -42,7 +42,7 @@ const state = {
   statsCalendarColorLookup: null,
 };
 
-const APP_VERSION = "1.0.33";
+const APP_VERSION = "1.0.34";
 const DESKTOP_LAYOUT_MQ = "(min-width: 900px)";
 const BACKUP_FORMAT = "tracknote-backup";
 const BACKUP_VERSION = 1;
@@ -907,6 +907,127 @@ function logsPeriodNavHtml() {
   `;
 }
 
+function logsFilteredEntriesByDayMap() {
+  const map = new Map();
+  filteredLogsEntries().forEach((entry) => {
+    const key = localISODate(parsePbDate(entry.logged_at));
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(entry);
+  });
+  return map;
+}
+
+function logsDayTrackerDots(entriesByDay, day) {
+  const entries = entriesByDay.get(localISODate(day)) || [];
+  const seen = new Set();
+  const trackers = [];
+  entries.forEach((entry) => {
+    if (seen.has(entry.tracker)) return;
+    seen.add(entry.tracker);
+    const tracker = trackerById(entry.tracker);
+    if (tracker) trackers.push(tracker);
+  });
+  return trackers.sort(
+    (a, b) => (a.sort_order || 0) - (b.sort_order || 0) || a.name.localeCompare(b.name, "nl")
+  );
+}
+
+function logsCalendarDayMark(entriesByDay, day, mini) {
+  const trackers = logsDayTrackerDots(entriesByDay, day);
+  if (!trackers.length) {
+    return `<span class="day-mark day-mark--empty" aria-hidden="true"></span>`;
+  }
+  const limit = mini ? 6 : 10;
+  const dots = trackers.slice(0, limit).map((tracker) => `
+    <i class="dot" title="${escapeHtml(tracker.name)}" style="background:${escapeHtml(tracker.color || "#64748b")}"></i>
+  `).join("");
+  const title = trackers.map((t) => t.name).join(" · ");
+  const extra = trackers.length > limit
+    ? `<span class="dot dot--more" title="${trackers.length - limit} extra">+</span>`
+    : "";
+  return `<span class="dots logs-cal-dots" title="${escapeHtml(title)}">${dots}${extra}</span>`;
+}
+
+function logsCalendarMonthsToShow() {
+  const range = state.logsFilter.range;
+  const anchor = startOfDay(new Date(`${state.logsFilter.anchor}T12:00:00`));
+  if (range === "all") {
+    return [{ year: anchor.getFullYear(), month: anchor.getMonth(), large: true }];
+  }
+  const count = range === "week" || range === "month" ? 1 : range === "6m" ? 6 : 12;
+  const large = range === "week" || range === "month";
+  const list = [];
+  for (let i = count - 1; i >= 0; i -= 1) {
+    const d = addMonths(anchor, -i);
+    list.push({ year: d.getFullYear(), month: d.getMonth(), large });
+  }
+  return list;
+}
+
+function formatLogsCalendarMonthLabel() {
+  const anchor = startOfDay(new Date(`${state.logsFilter.anchor}T12:00:00`));
+  return anchor.toLocaleDateString("nl-NL", { month: "long", year: "numeric" });
+}
+
+function shiftLogsCalendarMonth(direction) {
+  const next = addMonths(startOfDay(new Date(`${state.logsFilter.anchor}T12:00:00`)), direction);
+  state.logsFilter.anchor = localISODate(next);
+}
+
+function logsCalendarMonth(year, month, large, entriesByDay) {
+  const days = monthMatrix(year, month);
+  const title = new Date(year, month, 1).toLocaleDateString("nl-NL", { month: "long", year: "numeric" });
+  const today = localISODate(new Date());
+  const mini = !large;
+  return `
+    <section class="card logs-cal ${large ? "" : "mini-cal"}">
+      <h3 class="logs-cal-title">${title}</h3>
+      <div class="calendar calendar--logs-dots">
+        ${DOW.map((d) => `<div class="dow">${d}</div>`).join("")}
+        ${days.map((day) => {
+          const inMonth = day.getMonth() === month;
+          const key = localISODate(day);
+          const hasEntries = (entriesByDay.get(key) || []).length > 0;
+          return `
+            <button
+              class="day ${inMonth ? "" : "is-muted"} ${key === today ? "is-today" : ""} ${hasEntries ? "has-value" : ""}"
+              data-day="${key}"
+              type="button"
+              title="${escapeHtml(key)}"
+            >
+              <span class="day-num">${day.getDate()}</span>
+              ${logsCalendarDayMark(entriesByDay, day, mini)}
+            </button>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function logsCalendarSectionHtml(entriesByDay) {
+  const range = state.logsFilter.range;
+  const months = logsCalendarMonthsToShow();
+  const monthNav = range === "all"
+    ? `
+      <div class="period-nav logs-cal-month-nav" role="group" aria-label="Kalendermaand">
+        <button class="icon-btn icon-btn-sm" data-action="logs-cal-month-prev" type="button" aria-label="Vorige maand">‹</button>
+        <p class="period-nav-label">${escapeHtml(formatLogsCalendarMonthLabel())}</p>
+        <button class="icon-btn icon-btn-sm" data-action="logs-cal-month-next" type="button" aria-label="Volgende maand">›</button>
+      </div>
+    `
+    : "";
+  return `
+    <div class="logs-calendar-wrap card">
+      ${monthNav}
+      <p class="hint logs-cal-hint">Eén bolletje per tracker met logs op die dag (volgens je filters)</p>
+      <div class="mini-months logs-cal-months ${range === "year" ? "year" : ""}">
+        ${months.map(({ year, month, large }) => logsCalendarMonth(year, month, large, entriesByDay)).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function logListRow(entry, selected) {
   const tracker = trackerById(entry.tracker);
   const at = parsePbDate(entry.logged_at);
@@ -1040,6 +1161,7 @@ function renderLogs() {
   appEl.classList.remove("app--tiles");
   pruneLogsSelection();
   const filtered = filteredLogsEntries();
+  const entriesByDay = logsFilteredEntriesByDayMap();
   const selectedSet = new Set(state.logsSelectedIds);
   const range = state.logsFilter.range;
   const entryOptions = logsEntryFilterOptions();
@@ -1081,6 +1203,7 @@ function renderLogs() {
           <button class="btn btn-ghost btn-sm" data-action="logs-clear-filters" type="button">Filters wissen</button>
         </div>
       </div>
+      ${logsCalendarSectionHtml(entriesByDay)}
       ${selectedSet.size ? `
         <div class="logs-bulk-bar" role="toolbar" aria-label="Bulkacties">
           <span class="logs-bulk-count">${selectedSet.size} geselecteerd</span>
@@ -2587,6 +2710,16 @@ appEl.addEventListener("click", async (event) => {
   if (t.dataset.action === "logs-period-next") {
     shiftLogsPeriodAnchor(1);
     pruneLogsSelection();
+    renderLogs();
+    return;
+  }
+  if (t.dataset.action === "logs-cal-month-prev") {
+    shiftLogsCalendarMonth(-1);
+    renderLogs();
+    return;
+  }
+  if (t.dataset.action === "logs-cal-month-next") {
+    shiftLogsCalendarMonth(1);
     renderLogs();
     return;
   }
