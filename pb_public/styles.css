@@ -1304,15 +1304,60 @@ textarea { min-height: 90px; resize: vertical; }
 }
 
 .view-body--logs {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding-top: 0;
+}
+
+.logs-calendar-disclosure {
+  flex-shrink: 0;
+}
+
+.logs-calendar-disclosure.card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.logs-calendar-summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 650;
+  user-select: none;
+}
+
+.logs-calendar-summary::-webkit-details-marker {
+  display: none;
+}
+
+.logs-calendar-summary::after {
+  content: "›";
+  float: right;
+  color: var(--dim);
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
+
+.logs-calendar-disclosure[open] .logs-calendar-summary::after {
+  transform: rotate(-90deg);
 }
 
 .logs-calendar-wrap {
   flex-shrink: 0;
-  padding: 12px;
+  padding: 0 12px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.logs-calendar-disclosure[open] .logs-cal-months {
+  max-height: min(40vh, 380px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 2px;
 }
 
 .logs-cal-month-nav {
