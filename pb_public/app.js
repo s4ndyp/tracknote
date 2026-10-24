@@ -41,7 +41,7 @@ const state = {
   logsSelectedIds: [],
 };
 
-const APP_VERSION = "1.0.31";
+const APP_VERSION = "1.0.32";
 const DESKTOP_LAYOUT_MQ = "(min-width: 900px)";
 const BACKUP_FORMAT = "tracknote-backup";
 const BACKUP_VERSION = 1;
@@ -488,12 +488,75 @@ function openSheet(html) {
   sheetEl.classList.remove("is-modal");
   sheetBody.innerHTML = html;
   sheetEl.hidden = false;
+  setupTextAutocomplete();
 }
 
 function openLogModal(html) {
   sheetEl.classList.add("is-modal");
   sheetBody.innerHTML = html;
   sheetEl.hidden = false;
+  setupTextAutocomplete();
+}
+
+function textValueNorm(value) {
+  return String(value ?? "").trim().toLocaleLowerCase("nl-NL");
+}
+
+function previousTextValuesForTracker(trackerId, { excludeEntryId = null, limit = 80 } = {}) {
+  const byNorm = new Map();
+  const sorted = state.entries
+    .filter((e) => e.tracker === trackerId && String(e.value_text ?? "").trim())
+    .sort((a, b) => parsePbDate(b.logged_at) - parsePbDate(a.logged_at));
+  for (const entry of sorted) {
+    if (excludeEntryId && entry.id === excludeEntryId) continue;
+    const raw = String(entry.value_text).trim();
+    const norm = textValueNorm(raw);
+    if (!norm || byNorm.has(norm)) continue;
+    byNorm.set(norm, raw);
+    if (byNorm.size >= limit) break;
+  }
+  return [...byNorm.values()].sort((a, b) => a.localeCompare(b, "nl"));
+}
+
+function textSuggestionsForQuery(query, suggestions) {
+  const q = textValueNorm(query);
+  if (q.length < 2) return [];
+  return suggestions
+    .filter((s) => textValueNorm(s).includes(q))
+    .slice(0, 10);
+}
+
+function setupTextAutocomplete() {
+  const input = sheetBody.querySelector("#f-text[data-text-suggest]");
+  const list = sheetBody.querySelector("#f-text-suggestions");
+  if (!input || !list) return;
+  const saveBtn = sheetBody.querySelector("[data-save-entry]");
+  const trackerId = saveBtn?.dataset.tracker;
+  if (!trackerId) return;
+  const entryId = saveBtn?.dataset.saveEntry;
+  const excludeEntryId = entryId && entryId !== "new" ? entryId : null;
+  const suggestions = previousTextValuesForTracker(trackerId, { excludeEntryId });
+
+  const render = () => {
+    const matches = textSuggestionsForQuery(input.value, suggestions);
+    if (!matches.length) {
+      list.hidden = true;
+      list.innerHTML = "";
+      return;
+    }
+    list.innerHTML = matches.map((label) => `
+      <li><button type="button" data-text-suggest-pick>${escapeHtml(label)}</button></li>
+    `).join("");
+    list.hidden = false;
+  };
+
+  input.addEventListener("input", render);
+  input.addEventListener("focus", render);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      list.hidden = true;
+    }
+  });
 }
 
 function setView(view) {
@@ -1453,7 +1516,51 @@ function distributionColor(tracker, label, index, choiceColors) {
   return COLORS[(trackerPaletteOffset(tracker.id) + index) % COLORS.length];
 }
 
+function textDistributionGroups(items) {
+  const groups = new Map();
+  items.forEach((entry) => {
+    const raw = String(entry.value_text || "—").trim() || "—";
+    const norm = textValueNorm(raw === "—" ? "" : raw) || "—";
+    if (!groups.has(norm)) {
+      groups.set(norm, { total: 0, variants: new Map() });
+    }
+    const group = groups.get(norm);
+    group.total += 1;
+    group.variants.set(raw, (group.variants.get(raw) || 0) + 1);
+  });
+  const rows = [];
+  groups.forEach((group) => {
+    let label = "—";
+    let best = -1;
+    group.variants.forEach((count, variant) => {
+      if (count > best) {
+        best = count;
+        label = variant;
+      }
+    });
+    rows.push({ label, count: group.total });
+  });
+  return rows.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "nl"));
+}
+
 function distributionBuckets(tracker, items) {
+  const choiceColors = choiceColorsForTracker(tracker);
+
+  if (tracker.type === "text") {
+    let rows = textDistributionGroups(items);
+    if (rows.length > 8) {
+      const top = rows.slice(0, 7);
+      const otherCount = rows.slice(7).reduce((sum, row) => sum + row.count, 0);
+      rows = [...top];
+      if (otherCount > 0) rows.push({ label: "Overig", count: otherCount });
+    }
+    return rows.map((row, index) => ({
+      label: row.label,
+      count: row.count,
+      color: distributionColor(tracker, row.label, index, choiceColors),
+    }));
+  }
+
   const configured = tracker.type === "choice" ? (optionsOf(tracker).choices || []) : [];
   const valueCounts = {};
   configured.forEach((label) => { valueCounts[label] = 0; });
@@ -1461,22 +1568,10 @@ function distributionBuckets(tracker, items) {
     const key = String(entry.value_text || "—").trim() || "—";
     valueCounts[key] = (valueCounts[key] || 0) + 1;
   });
-  let labels = tracker.type === "choice"
+  const labels = tracker.type === "choice"
     ? [...new Set([...configured, ...Object.keys(valueCounts)])]
-    : Object.keys(valueCounts).sort((a, b) => (valueCounts[b] || 0) - (valueCounts[a] || 0) || a.localeCompare(b));
+    : Object.keys(valueCounts).sort((a, b) => (valueCounts[b] || 0) - (valueCounts[a] || 0) || a.localeCompare(b, "nl"));
 
-  if (tracker.type === "text" && labels.length > 8) {
-    const top = labels.slice(0, 7);
-    const rest = labels.slice(7);
-    const otherCount = rest.reduce((sum, label) => sum + (valueCounts[label] || 0), 0);
-    labels = [...top];
-    if (otherCount > 0) {
-      valueCounts.Overig = otherCount;
-      labels.push("Overig");
-    }
-  }
-
-  const choiceColors = choiceColorsForTracker(tracker);
   return labels.map((label, index) => ({
     label,
     count: valueCounts[label] || 0,
@@ -2050,7 +2145,19 @@ function logForm(tracker, entry = null, date = new Date()) {
   } else if (tracker.type === "number") {
     body = `<input id="f-number" type="number" step="${opts.step || 1}" value="${escapeHtml(entry?.value_number ?? "")}" />`;
   } else if (tracker.type === "text") {
-    body = `<textarea id="f-text" placeholder="Vrij invullen">${escapeHtml(entry?.value_text || "")}</textarea>`;
+    body = `
+      <div class="text-autocomplete-wrap">
+        <input
+          id="f-text"
+          type="text"
+          data-text-suggest
+          autocomplete="off"
+          value="${escapeHtml(entry?.value_text || "")}"
+          placeholder="Vrij invullen"
+        />
+        <ul class="text-suggest-list" id="f-text-suggestions" hidden></ul>
+      </div>
+    `;
   } else if (tracker.type === "counter") {
     body = `<input id="f-number" type="number" step="1" value="${escapeHtml(entry?.value_number ?? 1)}" />`;
   } else {
@@ -2433,6 +2540,16 @@ sheetEl.addEventListener("click", async (event) => {
   if (!t) return;
   if (t.dataset.close === "sheet") {
     closeSheet();
+    return;
+  }
+  const suggestPick = t.closest("[data-text-suggest-pick]");
+  if (suggestPick) {
+    const input = document.getElementById("f-text");
+    if (input) {
+      input.value = suggestPick.textContent.trim();
+      const list = document.getElementById("f-text-suggestions");
+      if (list) list.hidden = true;
+    }
     return;
   }
   if (t.dataset.catColor) {
