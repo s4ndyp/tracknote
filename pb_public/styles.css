@@ -718,7 +718,7 @@ body.view-today .app.app--tiles {
   right: 0;
   bottom: 0;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   background: color-mix(in srgb, var(--bg-elev) 92%, transparent);
   border-top: 1px solid var(--line);
   padding: 8px 8px calc(10px + env(safe-area-inset-bottom));
@@ -1146,6 +1146,110 @@ textarea { min-height: 90px; resize: vertical; }
   border-bottom: 1px solid var(--line);
 }
 .entry:last-child { border-bottom: 0; }
+
+.log-row.entry {
+  grid-template-columns: auto auto 1fr auto;
+}
+
+.log-row-check {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
+.log-row-body {
+  min-width: 0;
+}
+
+.log-row-body strong {
+  display: block;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logs-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 10px;
+}
+
+.logs-filters {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.logs-filter-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.logs-filter-label {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.logs-select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.logs-period-toolbar {
+  margin-top: 2px;
+}
+
+.logs-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.logs-bulk-bar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent) 10%, var(--card));
+}
+
+.logs-bulk-count {
+  flex: 1;
+  min-width: 120px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.logs-result-count {
+  margin: 0 0 4px;
+  font-size: 12px;
+}
+
+.view-body--logs {
+  padding-top: 0;
+}
+
+body.view-logs .app {
+  display: flex;
+  flex-direction: column;
+}
 
 .toasts {
   position: fixed;
@@ -1622,7 +1726,7 @@ body.view-today .today-bar {
     left: 50%;
     right: auto;
     transform: translateX(-50%);
-    width: min(520px, calc(100% - 32px));
+    width: min(640px, calc(100% - 32px));
     border: 1px solid var(--line);
     border-bottom: 0;
     border-radius: 18px 18px 0 0;

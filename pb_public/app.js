@@ -32,9 +32,16 @@ const state = {
   statsTrackerId: null,
   selectedDay: localISODate(new Date()),
   loading: false,
+  logsFilter: {
+    trackerId: "",
+    entryKey: "",
+    range: "month",
+    anchor: localISODate(new Date()),
+  },
+  logsSelectedIds: [],
 };
 
-const APP_VERSION = "1.0.28";
+const APP_VERSION = "1.0.31";
 const DESKTOP_LAYOUT_MQ = "(min-width: 900px)";
 const BACKUP_FORMAT = "tracknote-backup";
 const BACKUP_VERSION = 1;
@@ -531,11 +538,16 @@ function render() {
   const titles = {
     stats: "Statistieken",
     trackers: "Trackers",
+    logs: "Logs",
   };
   document.body.classList.toggle("view-today", state.view === "today");
+  document.body.classList.toggle("view-logs", state.view === "logs");
   if (state.view === "today") {
     todayLabel.textContent = "";
     setAppHeading("Vandaag");
+  } else if (state.view === "logs") {
+    todayLabel.textContent = "";
+    setAppHeading("Logs");
   } else if (state.view === "stats" && state.statsTrackerId) {
     todayLabel.textContent = "";
     const tracker = trackerById(state.statsTrackerId);
@@ -550,6 +562,7 @@ function render() {
   }
   if (state.view === "today") renderToday();
   else if (state.view === "stats") renderStats();
+  else if (state.view === "logs") renderLogs();
   else renderTrackers();
 }
 
@@ -715,6 +728,310 @@ function renderToday() {
       </div>
     </div>
     ${todayBarHtml(day, dayItems, dayLabel)}
+  `;
+}
+
+function defaultLogsFilter() {
+  return {
+    trackerId: "",
+    entryKey: "",
+    range: "month",
+    anchor: localISODate(new Date()),
+  };
+}
+
+function entryValueKey(entry) {
+  const text = String(entry.value_text ?? "").trim();
+  if (text) return `t:${text}`;
+  const num = entry.value_number;
+  if (num != null && num !== "" && Number(num) !== 0) return `n:${num}`;
+  return "check";
+}
+
+function entryValueLabel(entry, tracker) {
+  const text = String(entry.value_text ?? "").trim();
+  if (text) return text;
+  if (tracker?.type === "check") return "Gedaan";
+  const num = entry.value_number;
+  if (num != null && num !== "") {
+    const unit = tracker?.unit ? ` ${tracker.unit}` : "";
+    return `${num}${unit}`;
+  }
+  return "✓";
+}
+
+function logsFilterBounds() {
+  const range = state.logsFilter.range;
+  if (range === "all") return null;
+  const anchor = startOfDay(new Date(`${state.logsFilter.anchor}T12:00:00`));
+  return {
+    from: rangeStart(range, anchor),
+    to: endOfDay(anchor),
+  };
+}
+
+function formatLogsPeriodLabel() {
+  const range = state.logsFilter.range;
+  const end = startOfDay(new Date(`${state.logsFilter.anchor}T12:00:00`));
+  if (range === "week") {
+    const from = addDays(end, -6);
+    return `${from.toLocaleDateString("nl-NL", { day: "numeric", month: "short" })} – ${end.toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" })}`;
+  }
+  if (range === "month") {
+    return end.toLocaleDateString("nl-NL", { month: "long", year: "numeric" });
+  }
+  const monthsBack = range === "6m" ? 5 : 11;
+  const from = addMonths(end, -monthsBack);
+  const fromLabel = from.toLocaleDateString("nl-NL", { month: "short" });
+  const toLabel = end.toLocaleDateString("nl-NL", { month: "short" });
+  if (from.getFullYear() === end.getFullYear()) {
+    return `${fromLabel} – ${toLabel} ${end.getFullYear()}`;
+  }
+  return `${fromLabel} ${from.getFullYear()} – ${toLabel} ${end.getFullYear()}`;
+}
+
+function shiftLogsPeriodAnchor(direction) {
+  const range = state.logsFilter.range;
+  if (range === "all") return;
+  let next = startOfDay(new Date(`${state.logsFilter.anchor}T12:00:00`));
+  if (range === "week") next = addDays(next, 7 * direction);
+  else if (range === "month") next = addMonths(next, direction);
+  else if (range === "6m") next = addMonths(next, 6 * direction);
+  else if (range === "year") next = addMonths(next, 12 * direction);
+  state.logsFilter.anchor = localISODate(next);
+}
+
+function filteredLogsEntries({ skipEntry = false } = {}) {
+  const bounds = logsFilterBounds();
+  const trackerId = state.logsFilter.trackerId;
+  const entryKey = skipEntry ? "" : state.logsFilter.entryKey;
+  return state.entries
+    .filter((entry) => {
+      const at = parsePbDate(entry.logged_at);
+      if (bounds && (at < bounds.from || at > bounds.to)) return false;
+      if (trackerId && entry.tracker !== trackerId) return false;
+      if (entryKey && entryValueKey(entry) !== entryKey) return false;
+      return true;
+    })
+    .sort((a, b) => parsePbDate(b.logged_at) - parsePbDate(a.logged_at));
+}
+
+function logsEntryFilterOptions() {
+  const seen = new Map();
+  filteredLogsEntries({ skipEntry: true }).forEach((entry) => {
+    const key = entryValueKey(entry);
+    if (!seen.has(key)) {
+      seen.set(key, entryValueLabel(entry, trackerById(entry.tracker)));
+    }
+  });
+  return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1], "nl"));
+}
+
+function pruneLogsSelection() {
+  const visible = new Set(filteredLogsEntries().map((e) => e.id));
+  state.logsSelectedIds = state.logsSelectedIds.filter((id) => visible.has(id));
+}
+
+function logsPeriodNavHtml() {
+  if (state.logsFilter.range === "all") return "";
+  return `
+    <div class="period-nav" role="group" aria-label="Periode logs">
+      <button class="icon-btn icon-btn-sm" data-action="logs-period-prev" type="button" aria-label="Vorige periode">‹</button>
+      <p class="period-nav-label">${escapeHtml(formatLogsPeriodLabel())}</p>
+      <button class="icon-btn icon-btn-sm" data-action="logs-period-next" type="button" aria-label="Volgende periode">›</button>
+    </div>
+  `;
+}
+
+function logListRow(entry, selected) {
+  const tracker = trackerById(entry.tracker);
+  const at = parsePbDate(entry.logged_at);
+  const value = entryValueLabel(entry, tracker);
+  return `
+    <div class="log-row entry">
+      <input
+        type="checkbox"
+        class="log-row-check"
+        data-logs-select="${escapeHtml(entry.id)}"
+        ${selected ? "checked" : ""}
+        aria-label="Selecteer log"
+      />
+      <span class="tracker-chip tracker-chip--preview entry-chip" style="--chip-color:${escapeHtml(tracker?.color || "#64748b")}">
+        <span class="tracker-chip-label">${escapeHtml(trackerChipLabel(tracker?.name || "?"))}</span>
+      </span>
+      <div class="log-row-body">
+        <strong>${escapeHtml(tracker?.name || "Onbekend")}</strong>
+        <p class="hint">${escapeHtml(value)} · ${formatDayShort(at)} ${formatTime(at)}${entry.note ? ` · ${escapeHtml(entry.note)}` : ""}</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" data-edit-entry="${escapeHtml(entry.id)}" type="button">Bewerk</button>
+    </div>
+  `;
+}
+
+function bulkEditSheet(ids) {
+  const entries = ids.map((id) => state.entries.find((e) => e.id === id)).filter(Boolean);
+  const tracker = entries.length && entries.every((e) => e.tracker === entries[0].tracker)
+    ? trackerById(entries[0].tracker)
+    : null;
+  let valueField = "";
+  if (tracker) {
+    const opts = optionsOf(tracker);
+    if (tracker.type === "number" || tracker.type === "counter") {
+      valueField = `
+        <label>Nieuw getal <span class="optional">(leeg = niet wijzigen)</span></label>
+        <input id="bulk-number" type="number" step="${tracker.type === "counter" ? 1 : opts.step || 1}" />
+      `;
+    } else if (tracker.type === "text") {
+      valueField = `
+        <label>Nieuwe tekst <span class="optional">(leeg = niet wijzigen)</span></label>
+        <textarea id="bulk-text"></textarea>
+      `;
+    } else if (tracker.type === "choice") {
+      const choices = opts.choices || [];
+      valueField = `
+        <label>Nieuwe keuze</label>
+        <select id="bulk-choice">
+          <option value="">— niet wijzigen —</option>
+          ${choices.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("")}
+        </select>
+      `;
+    } else if (tracker.type === "scale") {
+      const min = Number(opts.min || 1);
+      const max = Number(opts.max || 10);
+      valueField = `
+        <label>Nieuwe schaal</label>
+        <select id="bulk-number">
+          <option value="">— niet wijzigen —</option>
+          ${Array.from({ length: max - min + 1 }, (_, i) => min + i).map((n) => `
+            <option value="${n}">${n}</option>
+          `).join("")}
+        </select>
+      `;
+    }
+  } else if (entries.length > 1) {
+    valueField = `<p class="hint">Waarde wijzigen kan alleen als alle geselecteerde logs dezelfde tracker hebben.</p>`;
+  }
+  return `
+    <h2 style="margin:0 0 8px">${entries.length} logs wijzigen</h2>
+    <p class="hint">Alleen ingevulde velden worden toegepast op alle geselecteerde logs.</p>
+    ${valueField}
+    <label>Notitie <span class="optional">(leeg = niet wijzigen)</span></label>
+    <input id="bulk-note" placeholder="Nieuwe notitie" />
+    <label class="row" style="margin-top:10px">
+      <input id="bulk-clear-note" type="checkbox" style="width:auto" />
+      Notitie wissen
+    </label>
+    <label>Dagen verschuiven</label>
+    <input id="bulk-day-shift" type="number" step="1" value="0" placeholder="0 = niet verschuiven" />
+    <p class="hint" style="margin-top:4px">Positief = later, negatief = eerder.</p>
+    <div class="actions">
+      <button class="btn btn-primary" data-save-bulk-edit="${escapeHtml(ids.join(","))}" type="button">Toepassen</button>
+    </div>
+  `;
+}
+
+async function saveBulkEdit(idsCsv) {
+  const ids = idsCsv.split(",").filter(Boolean);
+  const noteEl = document.getElementById("bulk-note");
+  const clearNote = document.getElementById("bulk-clear-note")?.checked;
+  const dayShift = Number(document.getElementById("bulk-day-shift")?.value || 0);
+  const textEl = document.getElementById("bulk-text");
+  const numberEl = document.getElementById("bulk-number");
+  const choiceEl = document.getElementById("bulk-choice");
+  let updated = 0;
+  for (const id of ids) {
+    const entry = state.entries.find((e) => e.id === id);
+    if (!entry) continue;
+    const patch = {};
+    if (clearNote) patch.note = "";
+    else if (noteEl?.value.trim()) patch.note = noteEl.value.trim();
+    if (dayShift !== 0) {
+      patch.logged_at = toPbDate(addDays(parsePbDate(entry.logged_at), dayShift));
+    }
+    if (textEl?.value.trim()) patch.value_text = textEl.value.trim();
+    if (choiceEl?.value) patch.value_text = choiceEl.value;
+    if (numberEl?.value !== "" && numberEl?.value != null) patch.value_number = Number(numberEl.value);
+    if (!Object.keys(patch).length) continue;
+    await pbRequest(`/api/collections/entries/records/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+    updated += 1;
+  }
+  closeSheet();
+  toast(updated ? `${updated} logs bijgewerkt` : "Geen wijzigingen");
+  state.logsSelectedIds = state.logsSelectedIds.filter((id) => !ids.includes(id));
+  await refresh();
+}
+
+async function bulkDeleteLogs(ids) {
+  if (!ids.length) return;
+  if (!confirm(`${ids.length} log${ids.length === 1 ? "" : "s"} definitief verwijderen?`)) return;
+  for (const id of ids) {
+    await pbRequest(`/api/collections/entries/records/${id}`, { method: "DELETE" });
+  }
+  state.logsSelectedIds = [];
+  toast(`${ids.length} log${ids.length === 1 ? "" : "s"} verwijderd`);
+  await refresh();
+}
+
+function renderLogs() {
+  appEl.classList.remove("app--tiles");
+  pruneLogsSelection();
+  const filtered = filteredLogsEntries();
+  const selectedSet = new Set(state.logsSelectedIds);
+  const range = state.logsFilter.range;
+  const entryOptions = logsEntryFilterOptions();
+  const trackers = [...state.trackers].sort((a, b) => a.name.localeCompare(b.name, "nl"));
+
+  appEl.innerHTML = `
+    <div class="logs-page">
+      <div class="logs-filters">
+        <div class="logs-filter-row">
+          <label class="logs-filter-label" for="logs-filter-tracker">Tracker</label>
+          <select id="logs-filter-tracker" class="logs-select" data-logs-filter-tracker aria-label="Filter op tracker">
+            <option value="">Alle trackers</option>
+            ${trackers.map((t) => `
+              <option value="${escapeHtml(t.id)}" ${state.logsFilter.trackerId === t.id ? "selected" : ""}>${escapeHtml(t.name)}</option>
+            `).join("")}
+          </select>
+        </div>
+        <div class="logs-filter-row">
+          <label class="logs-filter-label" for="logs-filter-entry">Invoer</label>
+          <select id="logs-filter-entry" class="logs-select" data-logs-filter-entry aria-label="Filter op invoer"${entryOptions.length ? "" : " disabled"}>
+            <option value="">Alle invoeren</option>
+            ${entryOptions.map(([key, label]) => `
+              <option value="${escapeHtml(key)}" ${state.logsFilter.entryKey === key ? "selected" : ""}>${escapeHtml(label)}</option>
+            `).join("")}
+          </select>
+        </div>
+        <div class="period-toolbar logs-period-toolbar">
+          ${logsPeriodNavHtml()}
+          <div class="segment">
+            <button data-logs-range="week" class="${range === "week" ? "is-active" : ""}" type="button">7 dagen</button>
+            <button data-logs-range="month" class="${range === "month" ? "is-active" : ""}" type="button">Deze maand</button>
+            <button data-logs-range="6m" class="${range === "6m" ? "is-active" : ""}" type="button">6 maanden</button>
+            <button data-logs-range="year" class="${range === "year" ? "is-active" : ""}" type="button">Jaar</button>
+            <button data-logs-range="all" class="${range === "all" ? "is-active" : ""}" type="button">Alles</button>
+          </div>
+        </div>
+        <div class="logs-filter-actions">
+          <button class="btn btn-ghost btn-sm" data-action="logs-select-all" type="button">Selecteer alles</button>
+          <button class="btn btn-ghost btn-sm" data-action="logs-clear-filters" type="button">Filters wissen</button>
+        </div>
+      </div>
+      ${selectedSet.size ? `
+        <div class="logs-bulk-bar" role="toolbar" aria-label="Bulkacties">
+          <span class="logs-bulk-count">${selectedSet.size} geselecteerd</span>
+          <button class="btn btn-ghost btn-sm" data-action="logs-bulk-edit" type="button">Wijzig</button>
+          <button class="btn btn-danger btn-sm" data-action="logs-bulk-delete" type="button">Verwijder</button>
+          <button class="btn btn-ghost btn-sm" data-action="logs-clear-selection" type="button">Deselecteer</button>
+        </div>
+      ` : ""}
+      <div class="view-body view-body--logs">
+        <p class="hint logs-result-count">${filtered.length} log${filtered.length === 1 ? "" : "s"}</p>
+        ${filtered.length
+          ? filtered.map((entry) => logListRow(entry, selectedSet.has(entry.id))).join("")
+          : `<p class="empty">Geen logs voor dit filter.</p>`}
+      </div>
+    </div>
   `;
 }
 
@@ -1951,8 +2268,34 @@ async function quickCheck(tracker) {
   await refresh();
 }
 
+appEl.addEventListener("change", (event) => {
+  const t = event.target;
+  if (t.matches("[data-logs-select]")) {
+    const id = t.dataset.logsSelect;
+    if (t.checked) {
+      if (!state.logsSelectedIds.includes(id)) state.logsSelectedIds.push(id);
+    } else {
+      state.logsSelectedIds = state.logsSelectedIds.filter((x) => x !== id);
+    }
+    renderLogs();
+    return;
+  }
+  if (t.matches("[data-logs-filter-tracker]")) {
+    state.logsFilter.trackerId = t.value;
+    state.logsFilter.entryKey = "";
+    pruneLogsSelection();
+    renderLogs();
+    return;
+  }
+  if (t.matches("[data-logs-filter-entry]")) {
+    state.logsFilter.entryKey = t.value;
+    pruneLogsSelection();
+    renderLogs();
+  }
+});
+
 appEl.addEventListener("click", async (event) => {
-  const t = event.target.closest("[data-open-tracker],[data-quick],[data-action],[data-stats-range],[data-stats-tracker],[data-day],[data-edit-tracker],[data-edit-category]");
+  const t = event.target.closest("[data-open-tracker],[data-quick],[data-action],[data-stats-range],[data-stats-tracker],[data-logs-range],[data-day],[data-edit-tracker],[data-edit-category],[data-edit-entry]");
   if (!t) return;
   if (t.dataset.quick === "counter") {
     event.stopPropagation();
@@ -2031,11 +2374,62 @@ appEl.addEventListener("click", async (event) => {
     resetPeriodAnchor();
     renderStats();
   }
+  if (t.dataset.logsRange) {
+    state.logsFilter.range = t.dataset.logsRange;
+    if (t.dataset.logsRange !== "all") {
+      state.logsFilter.anchor = localISODate(new Date());
+    }
+    pruneLogsSelection();
+    renderLogs();
+    return;
+  }
+  if (t.dataset.action === "logs-period-prev") {
+    shiftLogsPeriodAnchor(-1);
+    pruneLogsSelection();
+    renderLogs();
+    return;
+  }
+  if (t.dataset.action === "logs-period-next") {
+    shiftLogsPeriodAnchor(1);
+    pruneLogsSelection();
+    renderLogs();
+    return;
+  }
+  if (t.dataset.action === "logs-select-all") {
+    state.logsSelectedIds = filteredLogsEntries().map((e) => e.id);
+    renderLogs();
+    return;
+  }
+  if (t.dataset.action === "logs-clear-filters") {
+    state.logsFilter = defaultLogsFilter();
+    state.logsSelectedIds = [];
+    renderLogs();
+    return;
+  }
+  if (t.dataset.action === "logs-clear-selection") {
+    state.logsSelectedIds = [];
+    renderLogs();
+    return;
+  }
+  if (t.dataset.action === "logs-bulk-edit") {
+    if (!state.logsSelectedIds.length) return;
+    openSheet(bulkEditSheet(state.logsSelectedIds));
+    return;
+  }
+  if (t.dataset.action === "logs-bulk-delete") {
+    await bulkDeleteLogs([...state.logsSelectedIds]);
+    return;
+  }
+  if (t.dataset.editEntry) {
+    const entry = state.entries.find((e) => e.id === t.dataset.editEntry);
+    if (entry) openLogModal(logForm(trackerById(entry.tracker), entry));
+    return;
+  }
   if (t.dataset.day) openSheet(daySheet(t.dataset.day));
 });
 
 sheetEl.addEventListener("click", async (event) => {
-  const t = event.target.closest("[data-close],[data-color],[data-cat-color],[data-choice],[data-scale],[data-save-tracker],[data-delete-tracker],[data-save-category],[data-delete-category],[data-save-entry],[data-delete-entry],[data-edit-entry],[data-add-on-day],[data-log-tracker],[data-action=\"restore-backup\"]");
+  const t = event.target.closest("[data-close],[data-color],[data-cat-color],[data-choice],[data-scale],[data-save-tracker],[data-delete-tracker],[data-save-category],[data-delete-category],[data-save-entry],[data-delete-entry],[data-edit-entry],[data-add-on-day],[data-log-tracker],[data-save-bulk-edit],[data-action=\"restore-backup\"]");
   if (!t) return;
   if (t.dataset.close === "sheet") {
     closeSheet();
@@ -2093,6 +2487,7 @@ sheetEl.addEventListener("click", async (event) => {
       toast("Tracker verwijderd");
       await refresh();
     }
+    if (t.dataset.saveBulkEdit) await saveBulkEdit(t.dataset.saveBulkEdit);
     if (t.dataset.saveEntry) await saveEntry(t.dataset.saveEntry, t.dataset.tracker);
     if (t.dataset.deleteEntry) {
       await pbRequest(`/api/collections/entries/records/${t.dataset.deleteEntry}`, { method: "DELETE" });
@@ -2169,7 +2564,7 @@ registerServiceWorker();
 
 if (typeof window !== "undefined") {
   window.matchMedia(DESKTOP_LAYOUT_MQ).addEventListener("change", () => {
-    if (state.view === "today" || state.view === "stats") render();
+    if (state.view === "today" || state.view === "stats" || state.view === "logs") render();
   });
 }
 
