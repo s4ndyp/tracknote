@@ -39,9 +39,10 @@ const state = {
     anchor: localISODate(new Date()),
   },
   logsSelectedIds: [],
+  statsCalendarColorLookup: null,
 };
 
-const APP_VERSION = "1.0.32";
+const APP_VERSION = "1.0.33";
 const DESKTOP_LAYOUT_MQ = "(min-width: 900px)";
 const BACKUP_FORMAT = "tracknote-backup";
 const BACKUP_VERSION = 1;
@@ -1137,6 +1138,20 @@ function colorForChoiceValue(tracker, valueText) {
 
 function calendarChoiceLegendHtml(tracker) {
   if (!tracker || tracker.type !== "choice") return "";
+  const lookup = state.statsCalendarColorLookup;
+  const buckets = lookup?.buckets?.filter((b) => b.count > 0);
+  if (buckets?.length) {
+    return `
+      <div class="cal-choice-legend" role="list" aria-label="Legenda keuzes">
+        ${buckets.map((bucket) => `
+          <span class="cal-legend-item" role="listitem">
+            <i class="dot" style="background:${escapeHtml(bucket.color)}"></i>
+            <span>${escapeHtml(bucket.label)}</span>
+          </span>
+        `).join("")}
+      </div>
+    `;
+  }
   const choices = optionsOf(tracker).choices || [];
   if (!choices.length) return "";
   const colors = choiceColorsForTracker(tracker);
@@ -1152,10 +1167,29 @@ function calendarChoiceLegendHtml(tracker) {
   `;
 }
 
+function calendarTextLegendHtml(tracker) {
+  if (!tracker || tracker.type !== "text") return "";
+  const buckets = state.statsCalendarColorLookup?.buckets?.filter((b) => b.count > 0) || [];
+  if (!buckets.length) return "";
+  return `
+    <div class="cal-choice-legend" role="list" aria-label="Legenda invoeren">
+      ${buckets.map((bucket) => `
+        <span class="cal-legend-item" role="listitem">
+          <i class="dot" style="background:${escapeHtml(bucket.color)}"></i>
+          <span>${escapeHtml(bucket.label)}</span>
+        </span>
+      `).join("")}
+    </div>
+  `;
+}
+
 function calendarFilterHintHtml(tracker) {
   if (!tracker) return "";
   if (tracker.type === "choice") {
-    return `<p class="hint cal-filter-hint">Kleur in de cel = keuze die dag · tik op een dag voor details</p>`;
+    return `<p class="hint cal-filter-hint">Kleur in de cel = keuze die dag (zelfde als verdeling) · tik op een dag voor details</p>`;
+  }
+  if (tracker.type === "text") {
+    return `<p class="hint cal-filter-hint">Badgekleur = waarde die dag (zelfde als verdeling) · tik op een dag voor details</p>`;
   }
   return `<p class="hint cal-filter-hint">Waarde per dag in de cel · tik op een dag voor alle details</p>`;
 }
@@ -1196,16 +1230,35 @@ function calendarDayMark(date, mini, trackerId) {
     return `<span class="day-mark day-mark--empty" aria-hidden="true"></span>`;
   }
   const full = summaryFor(tracker, date);
+  const lookup = state.statsCalendarColorLookup;
   if (tracker.type === "choice") {
     const dots = items.slice(0, 8).map((entry) => {
-      const color = colorForChoiceValue(tracker, entry.value_text);
+      const color = lookup
+        ? lookup.colorForValue(entry.value_text)
+        : colorForChoiceValue(tracker, entry.value_text);
       const label = entry.value_text || "—";
       return `<i class="dot" title="${escapeHtml(label)}" style="background:${escapeHtml(color)}"></i>`;
     }).join("");
     return `<span class="dots" title="${escapeHtml(full)}">${dots}</span>`;
   }
+  if (tracker.type === "text" && lookup) {
+    const limit = mini ? 2 : 4;
+    const badges = items.slice(0, limit).map((entry) => {
+      const color = lookup.colorForValue(entry.value_text);
+      const piece = truncateCalendarLabel(entry.value_text || "—", mini ? 5 : 10);
+      return `<span class="day-value" style="--mark-color:${escapeHtml(color)}">${escapeHtml(piece)}</span>`;
+    }).join("");
+    const extra = items.length > limit ? `<span class="day-value day-value--more">+${items.length - limit}</span>` : "";
+    return `
+      <span class="day-mark day-mark--text-values" title="${escapeHtml(full)}">
+        ${badges}${extra}
+      </span>
+    `;
+  }
   const label = calendarValueLabel(tracker, items, { mini });
-  const color = tracker.color || "#64748b";
+  const color = lookup
+    ? lookup.colorForValue(items[0]?.value_text)
+    : (tracker.color || "#64748b");
   return `
     <span class="day-mark" title="${escapeHtml(full)}">
       <span class="day-value" style="--mark-color:${escapeHtml(color)}">${escapeHtml(label)}</span>
@@ -1256,6 +1309,7 @@ function statsCalendarSection(tracker) {
   const large = range === "month" || range === "week";
   return `
     ${calendarChoiceLegendHtml(tracker)}
+    ${calendarTextLegendHtml(tracker)}
     ${calendarFilterHintHtml(tracker)}
     <div class="mini-months ${range === "year" ? "year" : ""}">
       ${list.map(({ year, month }) => calendarMonth(year, month, large, tracker.id)).join("")}
@@ -1353,6 +1407,7 @@ function renderStats() {
   const active = state.trackers.filter((t) => !t.archived);
 
   if (!state.statsTrackerId) {
+    state.statsCalendarColorLookup = null;
     appEl.innerHTML = `
       <div class="view-body view-body--stats">
         <div class="stats-tracker-list" role="list">
@@ -1379,6 +1434,9 @@ function renderStats() {
     return d >= from && d <= to;
   });
   const range = state.statsRange;
+  state.statsCalendarColorLookup = (tracker.type === "text" || tracker.type === "choice")
+    ? buildDistributionColorLookup(tracker, entries)
+    : null;
 
   appEl.innerHTML = `
     <button class="btn btn-ghost btn-sm stats-back" data-action="stats-back" type="button">← Alle trackers</button>
@@ -1577,6 +1635,36 @@ function distributionBuckets(tracker, items) {
     count: valueCounts[label] || 0,
     color: distributionColor(tracker, label, index, choiceColors),
   }));
+}
+
+function buildDistributionColorLookup(tracker, items) {
+  const buckets = distributionBuckets(tracker, items);
+  const exact = new Map();
+  const topNorms = new Set();
+  buckets.forEach((bucket) => {
+    if (bucket.label === "Overig") return;
+    exact.set(bucket.label, bucket.color);
+    if (tracker.type === "text") {
+      topNorms.add(textValueNorm(bucket.label));
+      exact.set(textValueNorm(bucket.label), bucket.color);
+    }
+  });
+  const overigColor = buckets.find((b) => b.label === "Overig")?.color || null;
+  return {
+    buckets,
+    colorForValue(valueText) {
+      const key = String(valueText ?? "").trim() || "—";
+      if (exact.has(key)) return exact.get(key);
+      if (tracker.type === "text") {
+        const norm = textValueNorm(key === "—" ? "" : key) || "—";
+        if (exact.has(norm)) return exact.get(norm);
+        if (overigColor && !topNorms.has(norm)) return overigColor;
+      }
+      const bucket = buckets.find((b) => b.label === key);
+      if (bucket) return bucket.color;
+      return tracker?.color || "#64748b";
+    },
+  };
 }
 
 function donutSlicePath(cx, cy, outerR, innerR, startAngle, endAngle) {
