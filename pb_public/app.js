@@ -39,10 +39,11 @@ const state = {
     anchor: localISODate(new Date()),
   },
   logsSelectedIds: [],
+  logsCalendarOpen: false,
   statsCalendarColorLookup: null,
 };
 
-const APP_VERSION = "1.0.34";
+const APP_VERSION = "1.0.35";
 const DESKTOP_LAYOUT_MQ = "(min-width: 900px)";
 const BACKUP_FORMAT = "tracknote-backup";
 const BACKUP_VERSION = 1;
@@ -1017,14 +1018,18 @@ function logsCalendarSectionHtml(entriesByDay) {
       </div>
     `
     : "";
+  const openAttr = state.logsCalendarOpen ? " open" : "";
   return `
-    <div class="logs-calendar-wrap card">
-      ${monthNav}
-      <p class="hint logs-cal-hint">Eén bolletje per tracker met logs op die dag (volgens je filters)</p>
-      <div class="mini-months logs-cal-months ${range === "year" ? "year" : ""}">
-        ${months.map(({ year, month, large }) => logsCalendarMonth(year, month, large, entriesByDay)).join("")}
+    <details class="logs-calendar-disclosure card"${openAttr}>
+      <summary class="logs-calendar-summary">Kalender</summary>
+      <div class="logs-calendar-wrap">
+        ${monthNav}
+        <p class="hint logs-cal-hint">Eén bolletje per tracker met logs op die dag (volgens je filters)</p>
+        <div class="mini-months logs-cal-months ${range === "year" ? "year" : ""}">
+          ${months.map(({ year, month, large }) => logsCalendarMonth(year, month, large, entriesByDay)).join("")}
+        </div>
       </div>
-    </div>
+    </details>
   `;
 }
 
@@ -2611,6 +2616,12 @@ appEl.addEventListener("change", (event) => {
     renderLogs();
   }
 });
+
+appEl.addEventListener("toggle", (event) => {
+  const details = event.target;
+  if (!details.matches?.(".logs-calendar-disclosure")) return;
+  state.logsCalendarOpen = details.open;
+}, true);
 
 appEl.addEventListener("click", async (event) => {
   const t = event.target.closest("[data-open-tracker],[data-quick],[data-action],[data-stats-range],[data-stats-tracker],[data-logs-range],[data-day],[data-edit-tracker],[data-edit-category],[data-edit-entry]");
