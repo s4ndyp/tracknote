@@ -43,7 +43,7 @@ const state = {
   statsCalendarColorLookup: null,
 };
 
-const APP_VERSION = "1.0.35";
+const APP_VERSION = "1.0.36";
 const DESKTOP_LAYOUT_MQ = "(min-width: 900px)";
 const BACKUP_FORMAT = "tracknote-backup";
 const BACKUP_VERSION = 1;
@@ -559,6 +559,30 @@ function setupTextAutocomplete() {
       list.hidden = true;
     }
   });
+  list.addEventListener("mousedown", (event) => {
+    const pick = event.target.closest("[data-text-suggest-pick]");
+    if (!pick) return;
+    event.preventDefault();
+    input.value = pick.textContent.trim();
+    list.hidden = true;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  list.addEventListener("click", (event) => {
+    const pick = event.target.closest("[data-text-suggest-pick]");
+    if (!pick) return;
+    event.preventDefault();
+    input.value = pick.textContent.trim();
+    list.hidden = true;
+  });
+}
+
+function applyTextSuggestionPick(pickEl) {
+  const input = sheetBody.querySelector("#f-text[data-text-suggest]");
+  const list = sheetBody.querySelector("#f-text-suggestions");
+  if (!input || !pickEl) return;
+  input.value = pickEl.textContent.trim();
+  if (list) list.hidden = true;
+  input.focus();
 }
 
 function setView(view) {
@@ -2768,20 +2792,16 @@ appEl.addEventListener("click", async (event) => {
 });
 
 sheetEl.addEventListener("click", async (event) => {
+  const suggestPick = event.target.closest("[data-text-suggest-pick]");
+  if (suggestPick) {
+    event.preventDefault();
+    applyTextSuggestionPick(suggestPick);
+    return;
+  }
   const t = event.target.closest("[data-close],[data-color],[data-cat-color],[data-choice],[data-scale],[data-save-tracker],[data-delete-tracker],[data-save-category],[data-delete-category],[data-save-entry],[data-delete-entry],[data-edit-entry],[data-add-on-day],[data-log-tracker],[data-save-bulk-edit],[data-action=\"restore-backup\"]");
   if (!t) return;
   if (t.dataset.close === "sheet") {
     closeSheet();
-    return;
-  }
-  const suggestPick = t.closest("[data-text-suggest-pick]");
-  if (suggestPick) {
-    const input = document.getElementById("f-text");
-    if (input) {
-      input.value = suggestPick.textContent.trim();
-      const list = document.getElementById("f-text-suggestions");
-      if (list) list.hidden = true;
-    }
     return;
   }
   if (t.dataset.catColor) {

@@ -937,6 +937,8 @@ textarea { min-height: 90px; resize: vertical; }
   color: var(--text);
   font-size: 14px;
   line-height: 1.25;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 .text-suggest-list button:hover,
